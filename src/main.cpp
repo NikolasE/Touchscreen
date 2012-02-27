@@ -12,6 +12,22 @@
 using namespace std;
 
 int cnt=0;
+vector<CvPoint> mask;
+
+
+void on_mouse( int event, int x, int y, int flags, void* param ){
+
+	vector<CvPoint>* foo = (vector<CvPoint>*)param;
+
+	if (event == CV_EVENT_LBUTTONUP){
+		printf("%i %i\n",x,y);
+		foo->push_back(cvPoint(x,y));
+	}
+
+}
+
+
+
 
 void colCb(const sensor_msgs::ImageConstPtr& msg){
 
@@ -21,6 +37,8 @@ void colCb(const sensor_msgs::ImageConstPtr& msg){
 	IplImage* col = bridge.imgMsgToCv(msg, "bgr8");
 	IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
 
+
+
 	cvCvtColor(col,gray, CV_BGR2GRAY);
 
 
@@ -28,11 +46,27 @@ void colCb(const sensor_msgs::ImageConstPtr& msg){
 	int c_cnt=0;
 
 	int found = cvFindChessboardCorners(col, cvSize(6,4),corners, &c_cnt);
-	cout << "found " << c_cnt << " corners" << endl;
+	//	cout << "found " << c_cnt << " corners" << endl;
 	cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
 	cvDrawChessboardCorners(col, cvSize(6,4), corners, c_cnt,found);
 
+
+	// draw selected range:
+//	for (uint i=0; i<mask.size();++i){
+//		CvPoint a = mask[i];
+//		CvPoint b = mask[(i+1)%mask.size()];
+//		cvLine(col,a,b,CV_RGB(255,0,0),2);
+//		cout << a.x << endl;
+//	}
+
+	// draw mask over selected area
+	cvFillConvexPoly(col, &mask[0],mask.size(),CV_RGB(255,0,0));
+
+	cout << mask.size() << endl;
+
 	cvShowImage("view", col);
+
+
 
 	cvWaitKey(10);
 
@@ -45,7 +79,9 @@ int main(int argc, char ** argv)
 {
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
-		cvNamedWindow("view");
+	cvNamedWindow("view");
+
+	cvSetMouseCallback("view",on_mouse,&mask);
 
 	cvStartWindowThread();
 
