@@ -40,8 +40,7 @@ using namespace message_filters;
 int cnt=0;
 vector<CvPoint> mask_points;
 
-typedef pcl::PointXYZRGB Point;
-typedef pcl::PointCloud<Point> Cloud;
+
 
 const CvSize C_checkboard_size = cvSize(8,6);
 IplImage *mask_image;
@@ -90,7 +89,7 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
-
+//	cout << "CALLBACK" << endl;
 	sensor_msgs::CvBridge bridge;
 
 	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
@@ -138,11 +137,35 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	cvWaitKey(10);
 
 
+	// fit plane to pointcloud:
 	Cloud cloud;
 	pcl::fromROSMsg(*cloud_ptr, cloud);
 
+	Cloud filtered;
+	applyMask(cloud, filtered,mask_image);
 
-	//	ROS_INFO("Got Pointcloud with %i points", cloud.points.size());
+	Eigen::Vector4f model;
+	fitPlaneToCloud(filtered, model);
+
+	cout << "model" << endl << model;
+
+
+
+	// project the detected corners to the plane
+//	Cloud projected;
+//	bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+//
+//	cout << "3" << endl;
+//
+//	if (!valid) return;
+//
+//	Vector3f center, upwards, right;
+//	defineAxis(projected, center, upwards, right);
+//
+//	cout << "center: " << center << endl;
+
+//	vector<Vector2f> plane_coords;
+//	transformInPlaneCoordinates(projected, plane_coords, center, upwards, right);
 
 }
 
