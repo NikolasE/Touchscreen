@@ -25,6 +25,8 @@
   <depend package="image_rotate"/>
   <depend package="image_transport"/>
   <depend package="image_view"/>
+  <depend package="pcl_ros"/>
+  
 
 </package>
 

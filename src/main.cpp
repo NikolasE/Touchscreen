@@ -5,14 +5,34 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <cv_bridge/CvBridge.h>
 #include <cv_bridge/cv_bridge.h>
+#include <pcl_ros/point_cloud.h>
+#include <message_filters/time_synchronizer.h>
 
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/Image.h>
 
 #include <sensor_msgs/image_encodings.h>
 
+#include <pcl/ros/conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
+
+
 using namespace std;
+using namespace sensor_msgs;
+using namespace message_filters;
+
 
 int cnt=0;
 vector<CvPoint> mask;
+
+typedef pcl::PointXYZRGB Point;
+typedef pcl::PointCloud<Point> Cloud;
+
+const CvSize C_checkboard_size = cvSize(8,6);
 
 
 void on_mouse( int event, int x, int y, int flags, void* param ){
@@ -28,13 +48,12 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
 
 
 
-
-void colCb(const sensor_msgs::ImageConstPtr& msg){
+void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
 
 	sensor_msgs::CvBridge bridge;
 
-	IplImage* col = bridge.imgMsgToCv(msg, "bgr8");
+	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
 	IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
 
 
@@ -45,10 +64,10 @@ void colCb(const sensor_msgs::ImageConstPtr& msg){
 	CvPoint2D32f corners[70];
 	int c_cnt=0;
 
-	int found = cvFindChessboardCorners(col, cvSize(6,4),corners, &c_cnt);
+	int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt);
 	//	cout << "found " << c_cnt << " corners" << endl;
 	cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
-	cvDrawChessboardCorners(col, cvSize(6,4), corners, c_cnt,found);
+	cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
 
 
 	// draw selected range:
@@ -65,11 +84,14 @@ void colCb(const sensor_msgs::ImageConstPtr& msg){
 	cout << mask.size() << endl;
 
 	cvShowImage("view", col);
-
-
-
 	cvWaitKey(10);
 
+
+  Cloud cloud;
+  pcl::fromROSMsg(*cloud_ptr, cloud);
+
+
+//	ROS_INFO("Got Pointcloud with %i points", cloud.points.size());
 
 }
 
@@ -85,8 +107,16 @@ int main(int argc, char ** argv)
 
 	cvStartWindowThread();
 
-	image_transport::ImageTransport it(nh);
-	image_transport::Subscriber sub = it.subscribe("camera/rgb/image_color",10,colCb);
+//	image_transport::ImageTransport it(nh);
+//	image_transport::Subscriber sub = it.subscribe(,10,colCb);
+
+	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
+  message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 5);
+  message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 5);
+  Synchronizer<policy> sync(policy(10), image_sub, cloud_sub);
+  sync.registerCallback(boost::bind(&callback, _1, _2));
+
+
 
 
 	ros::spin();
