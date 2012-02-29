@@ -29,8 +29,12 @@
 #include <pcl/ros/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/common/transform.h>
 
 #include "cloud_processing.h"
+
+
+ros::Publisher pub;
 
 using namespace std;
 using namespace sensor_msgs;
@@ -46,6 +50,7 @@ const CvSize C_checkboard_size = cvSize(8,6);
 IplImage *mask_image;
 bool depth_mask_valid;
 
+//Eigen::Affine3f kinect_trafo;
 
 // define this to compute the depth-mask from the detected checkerbord
 // if not defined, the user can select four points manually to define the mask
@@ -96,6 +101,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
 
 
+
 	cvCvtColor(col,gray, CV_BGR2GRAY);
 
 
@@ -137,6 +143,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	cvWaitKey(10);
 
 
+	if (!depth_mask_valid) return;
+
 	// fit plane to pointcloud:
 	Cloud cloud;
 	pcl::fromROSMsg(*cloud_ptr, cloud);
@@ -147,25 +155,44 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	Eigen::Vector4f model;
 	fitPlaneToCloud(filtered, model);
 
-	cout << "model" << endl << model;
-
-
-
 	// project the detected corners to the plane
-//	Cloud projected;
-//	bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+	Cloud projected;
+	bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+
+	if (!valid) {ROS_WARN("invalid"); return; }
 //
-//	cout << "3" << endl;
-//
-//	if (!valid) return;
-//
-//	Vector3f center, upwards, right;
-//	defineAxis(projected, center, upwards, right);
-//
+	Vector3f center, upwards, right;
+	defineAxis(projected, center, upwards, right);
+
+	Eigen::Affine3f trafo;
+	pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right, (-right).cross(upwards), center, trafo );
+
+	Cloud trans;
+	pcl::getTransformedPointCloud(filtered, trafo, trans);
+
+
+
 //	cout << "center: " << center << endl;
 
 //	vector<Vector2f> plane_coords;
 //	transformInPlaneCoordinates(projected, plane_coords, center, upwards, right);
+//
+//	Cloud trans;
+//	for (uint i=0; i<plane_coords.size(); ++i){
+//		Point p;
+//		p.x = plane_coords[i].x();
+//		p.y = plane_coords[i].y();
+//		p.z = 0;
+//		cout << "x,y " << p.x << " " << p.y << endl;
+//		trans.points.push_back(p);
+//	}
+
+
+
+	Cloud::Ptr msg = trans.makeShared();
+	msg->header.frame_id = "/openni_rgb_optical_frame";
+	msg->header.stamp = ros::Time::now ();
+	pub.publish(msg);
 
 }
 
@@ -176,6 +203,9 @@ int main(int argc, char ** argv)
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
 	cvNamedWindow("view");
+
+	pub = nh.advertise<Cloud> ("projected", 1);
+
 
 
 	// check if depth-mask exists:
