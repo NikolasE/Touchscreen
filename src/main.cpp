@@ -46,15 +46,19 @@ vector<CvPoint> mask_points;
 
 
 
-const CvSize C_checkboard_size = cvSize(8,6);
+const CvSize C_checkboard_size = cvSize(6,4);
 IplImage *mask_image;
 bool depth_mask_valid;
 
-//Eigen::Affine3f kinect_trafo;
+// trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0 and parallel to image axis
+// the first trafo is stored and used for all following frames
+Eigen::Affine3f kinect_trafo;
+bool kinect_trafo_valid = false;
+
 
 // define this to compute the depth-mask from the detected checkerbord
 // if not defined, the user can select four points manually to define the mask
-#define MASK_FROM_DETECTIONS
+// #define MASK_FROM_DETECTIONS
 
 
 void on_mouse( int event, int x, int y, int flags, void* param ){
@@ -94,27 +98,32 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
-//	cout << "CALLBACK" << endl;
+	//	cout << "CALLBACK" << endl;
 	sensor_msgs::CvBridge bridge;
 
 	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
-	IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
 
 
-
-	cvCvtColor(col,gray, CV_BGR2GRAY);
-
-
-	CvPoint2D32f corners[70];
+	CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
 	int c_cnt=0;
+	bool board_found = false;
 
-	int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt);
-	cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
-	cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
+	if (!kinect_trafo_valid){
+
+		cout << "no trafo" << endl;
+
+		IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
+		cvCvtColor(col,gray, CV_BGR2GRAY);
+		int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt);
+		cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
+		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
+
+		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
+	}
 
 
 #ifdef MASK_FROM_DETECTIONS
-	if (found && !depth_mask_valid){
+	if (board_found && !depth_mask_valid){
 		createMaskFromCheckerBoardDetections(mask_image,corners,C_checkboard_size);
 		cvNamedWindow("mask");
 		cvShowImage("mask", mask_image);
@@ -143,6 +152,11 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	cvWaitKey(10);
 
 
+	if (!board_found && !kinect_trafo_valid){
+		ROS_INFO("Checkerboard was not found!");
+		return;
+	}
+
 	if (!depth_mask_valid) return;
 
 	// fit plane to pointcloud:
@@ -152,42 +166,63 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	Cloud filtered;
 	applyMask(cloud, filtered,mask_image);
 
-	Eigen::Vector4f model;
-	fitPlaneToCloud(filtered, model);
 
-	// project the detected corners to the plane
-	Cloud projected;
-	bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+	if (!kinect_trafo_valid){
 
-	if (!valid) {ROS_WARN("invalid"); return; }
-//
-	Vector3f center, upwards, right;
-	defineAxis(projected, center, upwards, right);
+		Eigen::Vector4f model;
+		fitPlaneToCloud(filtered, model);
 
-	Eigen::Affine3f trafo;
-	pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right, (-right).cross(upwards), center, trafo );
+		// project the detected corners to the plane
+		Cloud projected;
+		bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+		if (!valid) {ROS_WARN("invalid"); return; }
+
+		Vector3f center, upwards, right;
+		defineAxis(projected, center, upwards, right);
+
+		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right, (right).cross(upwards), center, kinect_trafo);
+		kinect_trafo_valid = true;
+		ROS_INFO("found checkerboard and computed trafo");
+
+	}
 
 	Cloud trans;
-	pcl::getTransformedPointCloud(filtered, trafo, trans);
+	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
 
 
+	// mark points close to the board
+#define MINMAX
+#ifdef MINMAX
+	float minz = 100;
+	float maxz = -100;
+#endif
 
-//	cout << "center: " << center << endl;
+	for (uint i=0; i<trans.points.size(); ++i){
+		Point p = trans.points[i];
+#ifdef MINMAX
+		minz = min(minz,p.z);
+		maxz = max(maxz,p.z);
+#endif
+		if (p.z < 0.02 || p.z > 0.06) continue;
 
-//	vector<Vector2f> plane_coords;
-//	transformInPlaneCoordinates(projected, plane_coords, center, upwards, right);
-//
-//	Cloud trans;
-//	for (uint i=0; i<plane_coords.size(); ++i){
-//		Point p;
-//		p.x = plane_coords[i].x();
-//		p.y = plane_coords[i].y();
-//		p.z = 0;
-//		cout << "x,y " << p.x << " " << p.y << endl;
-//		trans.points.push_back(p);
-//	}
+		uint8_t r,g,b; r = g= b= 0;
 
+		if (p.z < 0.04){
+			g = 255;
+		}
+		else
+			if (p.z < 0.06){
+				r = 255;
+			}
 
+		int32_t rgb = (r << 16) | (g << 8) | b;
+		trans.points[i].rgb =  *(float *)(&rgb);
+
+	}
+
+#ifdef MINMAX
+	printf("min,max %f %f \n", minz, maxz);
+#endif
 
 	Cloud::Ptr msg = trans.makeShared();
 	msg->header.frame_id = "/openni_rgb_optical_frame";
