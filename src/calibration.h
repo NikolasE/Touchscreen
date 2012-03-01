@@ -24,6 +24,10 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 void drawCheckerboard(IplImage* img,const IplImage* mask, CvSize size, vector<CvPoint2D32f>& corners_2d);
 
 
+// p_ = H*p
+void applyHomography(const CvPoint2D32f& p,const CvMat* H, CvPoint& p_);
+
+
 
 
 #endif /* CALIBRATION_H_ */

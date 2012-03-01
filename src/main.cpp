@@ -33,6 +33,7 @@
 
 #include "cloud_processing.h"
 #include "calibration.h"
+#include "user_input.h"
 
 ros::Publisher pub;
 
@@ -47,7 +48,7 @@ vector<CvPoint> mask_points;
 Cloud full_cloud_moved;
 
 CvMat* proj_Hom = cvCreateMat(3,3,CV_32FC1);
-
+IplImage* col;
 
 const CvSize C_checkboard_size = cvSize(6,4);
 IplImage *mask_image;
@@ -67,6 +68,10 @@ const CvSize C_proj_size = cvSize(1280,1024);
 vector<CvPoint2D32f> projector_corners; // position of internal corners on the projector image
 
 
+// coordinate system in plane
+Vector3f pl_center, pl_upwards, pl_right;
+
+
 // define this to compute the depth-mask from the detected checkerbord
 // if not defined, the user can select four points manually to define the mask
 #define MASK_FROM_DETECTIONS
@@ -83,36 +88,16 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 	Cloud* cloud = (Cloud*)param;
 	if (event != CV_EVENT_LBUTTONUP) return;
 
-//	ROS_INFO("cloud has %i points", (int) cloud->points.size());
-
 	// get 3d point at this position
-	assert(cloud);
-
 	Point p = cloud->at(x,y);
 
-	if (p.x != p.x) {ROS_WARN("Point has no depth!"); return;}
+	if (p.z != p.z) {ROS_WARN("Point has no depth!"); return;}
+	if (abs(p.z) > 0.03) {ROS_WARN("Point is not in plane!"); return;}
 
-//	ROS_INFO("Clicked point: %i %i, #d: %f %f %f", x,y, p.x,p.y,p.z);
+	CvPoint proj;
+	applyHomography(cvPoint2D32f(p.x,p.y),proj_Hom,proj);
 
-	// use homography to move from plane to projector
-	CvMat* p_ = cvCreateMat(3,1,CV_32FC1);
-	cvSet1D(p_,0,cvScalarAll(p.x));
-	cvSet1D(p_,1,cvScalarAll(p.y));
-	cvSet1D(p_,2,cvScalarAll(1));
-
-
-	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
-
-
-	cvMatMul(proj_Hom, p_,p_proj);
-
-	float x_b = cvGet1D(p_proj,0).val[0];
-	float y_b = cvGet1D(p_proj,1).val[0];
-//	float z_b = cvGet1D(p_proj,2).val[0];
-
-//	ROS_INFO("Projected: %f %f %f", x_b, y_b, z_b);
-
-	cvCircle(projector_image, cvPoint(x_b,y_b),20, CV_RGB(255,0,0),-1);
+	cvCircle(projector_image, proj,20, CV_RGB(255,0,0),-1);
 
 	cvShowImage("board", projector_image);
 
@@ -155,15 +140,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	sensor_msgs::CvBridge bridge;
 
 
-	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
-
-	//	// fake projector:
-	//	// IplImage* board = cvCloneImage(col);
-	//	vector<CvPoint2D32f> pts;
-	//	drawCheckerboard(col,mask_image,C_checkboard_size, pts);
-	////	cvShowImage("board", board);
-	//
-
+	col = bridge.imgMsgToCv(img_ptr, "bgr8");
 
 	CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
 	int c_cnt=0;
@@ -173,28 +150,17 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 		ROS_INFO("Searching for checkerboard");
 
-
 		int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
+		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
 
+
+		if (board_found){ ROS_WARN("Checkerboard was detected");
+		}else { 	ROS_WARN("Board was not found!"); return; }
 
 		IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
-
 		cvCvtColor(col,gray, CV_BGR2GRAY);
-
-		cvNamedWindow("g",0);
-		cvShowImage("g", gray);
-
-
 		cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
 		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
-
-		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
-		cvShowImage("view", col);
-
-		cout << "found " << c_cnt << endl;
-
-		if (board_found){ ROS_WARN("FOUND THE BOARD");
-		}else { 	ROS_WARN("Board was not found!"); return; }
 	}
 
 
@@ -223,12 +189,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	if (depth_mask_valid)
 		showMaskOnImage(col, mask_image);
 
-	// show larger image:
-//	IplImage* large = cvCreateImage(cvSize(2*col->width,2*col->height), col->depth, col->nChannels);
-//	cvResize(col, large);
 	cvShowImage("view", col);
-	cvWaitKey(10);
-
 
 
 	if (!depth_mask_valid){ ROS_INFO("No depth mask!"); return; }
@@ -249,43 +210,30 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		// project the detected corners to the plane
 		Cloud projected;
 		bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
-		if (!valid) {ROS_WARN("invalid"); return; }
+		if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
 
-		Vector3f center, upwards, right;
-		defineAxis(projected, center, upwards, right);
 
-		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right,model.head<3>(), center, kinect_trafo);
+		defineAxis(projected, pl_center, pl_upwards, pl_right);
+		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_right,model.head<3>(), pl_center, kinect_trafo);
 
 		kinect_trafo_valid = true;
-		ROS_INFO("found checkerboard and computed trafo");
 
 		// compute homography between screen and Beamer:
-
 		Cloud corners_in_xy_plane;
 		pcl::getTransformedPointCloud(projected, kinect_trafo, corners_in_xy_plane);
 
 		computeHomography(projector_corners,corners_in_xy_plane,proj_Hom);
-
-		assert(proj_Hom);
-
-		for (uint i=0; i<3; ++i){
-			for (uint j=0; j<3; ++j){
-				cout << cvmGet(proj_Hom,i,j) << " "; }
-			cout << endl;
-		}
-
-
-		ROS_INFO("Computed projector Homography");
-
+//		for (uint i=0; i<3; ++i){
+//			for (uint j=0; j<3; ++j){
+//				cout << cvmGet(proj_Hom,i,j) << " "; }
+//			cout << endl; 	}
+		ROS_WARN("Computed Homography");
 	}
-
 
 	Cloud trans;
 	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
 
-
 	// everything is set up!
-
 	pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
 	cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
 
@@ -304,12 +252,28 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		minz = min(minz,p.z);
 		maxz = max(maxz,p.z);
 #endif
-		if (p.z < 0.02 || p.z > 0.06) continue;
+		if (p.z < 0.03 || p.z > 0.06) continue;
 
 		uint8_t r,g,b; r = g= b= 0;
 
-		if (p.z < 0.04){
+		if (p.z < 0.05){
 			g = 255;
+			// save point on plane
+//			Vector2f px;
+//			transformInPlaneCoordinates(cvPoint3D32f(p.x,p.y,p.z),px, pl_center, pl_upwards, pl_right);
+
+			CvPoint proj;
+			applyHomography(cvPoint2D32f(p.x,p.y),proj_Hom,proj);
+
+
+//			ROS_INFO("pt: %f %f %f px: %f %f", p.x,p.y,p.z, px.x(), px.y());
+			ROS_INFO("projected to: %i %i", proj.x, proj.y);
+			cvCircle(projector_image, proj,20, CV_RGB(255,0,0),-1);
+			cvShowImage("board", projector_image);
+
+			break;
+
+
 		}
 		else
 			if (p.z < 0.06){
@@ -327,7 +291,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 
-	Cloud::Ptr msg = full_cloud_moved.makeShared();
+	Cloud::Ptr msg = trans.makeShared();
 	msg->header.frame_id = "/openni_rgb_optical_frame";
 	msg->header.stamp = ros::Time::now ();
 	pub.publish(msg);
@@ -340,7 +304,7 @@ int main(int argc, char ** argv)
 {
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
-	cvNamedWindow("view", 0);
+	cvNamedWindow("view", 1);
 
 
 	// load projector mask and show fullscreen on secondary screen:
@@ -399,9 +363,9 @@ int main(int argc, char ** argv)
 
 
 	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
-	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
-	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
-	Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
+	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 5);
+	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 5);
+	Synchronizer<policy> sync(policy(5), image_sub, cloud_sub);
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 

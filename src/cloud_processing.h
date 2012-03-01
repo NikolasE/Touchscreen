@@ -41,5 +41,7 @@ void defineAxis(const Cloud& corners,  Eigen::Vector3f& center, Eigen::Vector3f&
 
 void transformInPlaneCoordinates(const Cloud& corners, vector<Vector2f>& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right);
 
+void transformInPlaneCoordinates(const CvPoint3D32f p, Vector2f& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right);
+
 
 #endif /* CLOUD_PROCESSING_H_ */

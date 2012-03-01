@@ -104,31 +104,24 @@ void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& 
 // all points are in one plane!
 void transformInPlaneCoordinates(const Cloud& corners, vector<Vector2f>& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right){
 
-	coords.resize(corners.points.size());
+	coords.reserve(corners.points.size());
 	for (uint i=0; i<corners.points.size(); ++i){
 		Point c = corners.points[i];
 		Vector3f p = Eigen::Vector3f(c.x,c.y,c.z)-center;
-
-
-//		cout << p << endl;
-//
-//		printf("up %f %f %f \n", up_n.x(),up_n.y(),up_n.z());
-//		printf("right %f %f %f \n", right_n.x(),right_n.y(),right_n.z());
-
 		float u = upwards.dot(p);
 		float r = right.dot(p);
 
-		//if (u>1.1 || r>1.1){
-//		ROS_WARN("u,r: %f %f", u,r);
-
 		coords.push_back(Vector2f(r,u));
-
-		//		}
-
 	}
-
-
 }
 
 
-
+void transformInPlaneCoordinates(const CvPoint3D32f p, Vector2f& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right){
+	Cloud c;
+	Point p_;
+	p_.x = p.x; p_.y = p.y; p_.z = p.z;
+	c.points.push_back(p_);
+	vector<Vector2f> c_vec;
+	transformInPlaneCoordinates(c,c_vec, center, upwards, right);
+	coords = c_vec[0];
+}

@@ -12,7 +12,14 @@ you don't need to care about the internal processing but can rather
 use it like a monitor with multitouch input. 
 
 
+How to use:
+(! Still work in progress and therefore unstable !)
 
+- Use projector are secondary monitor (place it virtually right of your monitor, maybe adapt const CvSize C_proj_size in main.cpp l. 64)
+- direct the monitor on a flat surface
+- point the kinect at the same surface
+- Start the application
+- Click on the "view" image. The clicked point will turn red on the surface
 
 
 https://entropia.de/GPN12:Kinect-Touchpad

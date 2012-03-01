@@ -7,6 +7,23 @@
 
 #include "calibration.h"
 
+
+void applyHomography(const CvPoint2D32f& p,const CvMat* H, CvPoint& p_){
+
+	CvMat* pc = cvCreateMat(3,1,CV_32FC1);
+	cvSet1D(pc,0,cvScalarAll(p.x));
+	cvSet1D(pc,1,cvScalarAll(p.y));
+	cvSet1D(pc,2,cvScalarAll(1));
+
+	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
+
+	cvMatMul(H, pc,p_proj);
+
+	p_.x = cvGet1D(p_proj,0).val[0];
+	p_.y = cvGet1D(p_proj,1).val[0];
+}
+
+
 void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corners_3d, CvMat* H){
 
 
@@ -32,7 +49,7 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 		cvSet2D(dst,0,i,cvScalarAll(corners_2d.at(i).x));
 		cvSet2D(dst,1,i,cvScalarAll(corners_2d.at(i).y));
 
-//		printf("from %f %f to %f %f \n", corners_3d.at(i).x,corners_3d.at(i).y,corners_2d.at(i).x,corners_2d.at(i).y);
+		//		printf("from %f %f to %f %f \n", corners_3d.at(i).x,corners_3d.at(i).y,corners_2d.at(i).x,corners_2d.at(i).y);
 
 	}
 
@@ -40,27 +57,27 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 
 	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
 
-//	CvMat* p_ = cvCreateMat(3,1,CV_32FC1);
-//	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
-//
-//	// compute residual error:
-//	for (uint i=0; i<N; ++i){
-//
-//		cvSet1D(p_,0,cvScalarAll(corners_3d.at(i).x));
-//		cvSet1D(p_,1,cvScalarAll(corners_3d.at(i).y));
-//		cvSet1D(p_,2,cvScalarAll(1));
-//
-//		cvMatMul(H, p_,p_proj);
-//
-//		float x_b = cvGet1D(p_proj,0).val[0];
-//		float y_b = cvGet1D(p_proj,1).val[0];
-//		float z_b = cvGet1D(p_proj,2).val[0];
-//
-//		printf("input: %f %f\n", corners_3d.at(i).x, corners_3d.at(i).y);
-//		printf("output: %f %f %f\n", x_b, y_b, z_b);
-//		printf("expected: %f %f\n\n", corners_2d.at(i).x,corners_2d.at(i).y);
-//
-//	}
+	//	CvMat* p_ = cvCreateMat(3,1,CV_32FC1);
+	//	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
+	//
+	//	// compute residual error:
+	//	for (uint i=0; i<N; ++i){
+	//
+	//		cvSet1D(p_,0,cvScalarAll(corners_3d.at(i).x));
+	//		cvSet1D(p_,1,cvScalarAll(corners_3d.at(i).y));
+	//		cvSet1D(p_,2,cvScalarAll(1));
+	//
+	//		cvMatMul(H, p_,p_proj);
+	//
+	//		float x_b = cvGet1D(p_proj,0).val[0];
+	//		float y_b = cvGet1D(p_proj,1).val[0];
+	//		float z_b = cvGet1D(p_proj,2).val[0];
+	//
+	//		printf("input: %f %f\n", corners_3d.at(i).x, corners_3d.at(i).y);
+	//		printf("output: %f %f %f\n", x_b, y_b, z_b);
+	//		printf("expected: %f %f\n\n", corners_2d.at(i).x,corners_2d.at(i).y);
+	//
+	//	}
 
 }
 
