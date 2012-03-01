@@ -1,0 +1,18 @@
+Kinect-Touchscreen
+
+The goal of this project is to build a prototype for a large touchscreen 
+with a projector and a Kinect (or any similar RGBD-Camera). 
+The projector is used to project any input on a flat surface 
+(a wall or the floor) and the kinect recognizes the user input. 
+
+The current goal is a proof of concept implementation to show 
+that the approach is feasible. 
+At the end, the touchscreen should be easy to use, so that 
+you don't need to care about the internal processing but can rather
+use it like a monitor with multitouch input. 
+
+
+
+
+
+https://entropia.de/GPN12:Kinect-Touchpad
