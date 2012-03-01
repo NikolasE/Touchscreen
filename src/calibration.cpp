@@ -38,17 +38,6 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 
 	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
 
-
-
-
-
-
-
-
-
-
-
-
 }
 
 

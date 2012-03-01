@@ -73,6 +73,39 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
 	if (event == CV_EVENT_LBUTTONUP) vec->push_back(cvPoint(x,y));
 }
 
+
+void on_mouse_projector( int event, int x, int y, int flags, void* param ){
+	Cloud* cloud = (Cloud*)param;
+	if (event != CV_EVENT_LBUTTONUP) return;
+
+	// get 3d point at this position
+	Point p = cloud->at(x,y);
+	if (p.x != p.x) {ROS_WARN("Point has no depth!"); return;}
+
+	assert(proj_Hom);
+
+	// use homography to move from plane to projector
+	CvMat* p_ = cvCreateMat(1,3,CV_32FC1);
+	cvSet1D(p_,0,cvScalarAll(p.x));
+	cvSet1D(p_,1,cvScalarAll(p.y));
+	cvSet1D(p_,2,cvScalarAll(p.z));
+
+	CvMat p_proj;
+	cvMul(proj_Hom, p_,&p_proj);
+
+	float x_b = cvGet1D(&p_proj,0).val[0];
+	float y_b = cvGet1D(&p_proj,1).val[0];
+	float z_b = cvGet1D(&p_proj,1).val[0];
+
+	ROS_INFO("Projected: %f %f %f", x_b, y_b, z_b);
+
+	cvCircle(projector_image, cvPoint(x_b,y_b),20, CV_RGB(255,0,0),-1);
+
+	cvShowImage("board", projector_image);
+
+}
+
+
 // 255 for interesting region
 void createMaskFromPoints(IplImage* mask,const vector<CvPoint>& points){
 	cvSet(mask,cvScalarAll(0));
@@ -136,6 +169,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
 
 		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
+
+
 	}
 
 
@@ -211,17 +246,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 		ROS_INFO("Computed projector Homography");
 
-
-
-
 	}
+
 
 	Cloud trans;
 	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
 
 
-
-
+	// everything is set up!
+	cvSetMouseCallback("board",on_mouse_projector,&trans);
 
 
 
@@ -275,9 +308,8 @@ int main(int argc, char ** argv)
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
 	cvNamedWindow("view", 0);
-	// move on second screen and then go fullscreen
-	cvMoveWindow("view", 1500, 100);
-//
+//	cvMoveWindow("view", 1500, 100);
+
 
 
 
