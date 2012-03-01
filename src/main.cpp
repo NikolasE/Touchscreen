@@ -32,7 +32,7 @@
 #include <pcl/common/transform.h>
 
 #include "cloud_processing.h"
-
+#include "calibration.h"
 
 ros::Publisher pub;
 
@@ -101,7 +101,21 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	//	cout << "CALLBACK" << endl;
 	sensor_msgs::CvBridge bridge;
 
+
+
 	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
+
+	// fake projector:
+	// IplImage* board = cvCloneImage(col);
+	vector<CvPoint2D32f> pts;
+	drawCheckerboard(col,mask_image,C_checkboard_size.width, C_checkboard_size.height, pts);
+//	cvShowImage("board", board);
+
+
+
+
+
+
 
 
 	CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
@@ -180,7 +194,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		Vector3f center, upwards, right;
 		defineAxis(projected, center, upwards, right);
 
-		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right, (right).cross(upwards), center, kinect_trafo);
+		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-right,model.head<3>(), center, kinect_trafo);
+
 		kinect_trafo_valid = true;
 		ROS_INFO("found checkerboard and computed trafo");
 
@@ -189,9 +204,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	Cloud trans;
 	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
 
+//	vector<CvPoint2D32f> pts;
+//	computeHomography(pts, trans, NULL);
+
+
+
+
 
 	// mark points close to the board
-#define MINMAX
+// #define MINMAX
 #ifdef MINMAX
 	float minz = 100;
 	float maxz = -100;
@@ -224,6 +245,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	printf("min,max %f %f \n", minz, maxz);
 #endif
 
+
+
 	Cloud::Ptr msg = trans.makeShared();
 	msg->header.frame_id = "/openni_rgb_optical_frame";
 	msg->header.stamp = ros::Time::now ();
@@ -237,7 +260,15 @@ int main(int argc, char ** argv)
 {
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
-	cvNamedWindow("view");
+	cvNamedWindow("view", 0);
+	// move on second screen and then go fullscreen
+	cvMoveWindow("view", 1500, 100);
+//	 cvSetWindowProperty("view", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+
+	cvNamedWindow("board", 0);
+
+
+
 
 	pub = nh.advertise<Cloud> ("projected", 1);
 
@@ -270,9 +301,9 @@ int main(int argc, char ** argv)
 
 
 	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
-	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 5);
-	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 5);
-	Synchronizer<policy> sync(policy(10), image_sub, cloud_sub);
+	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
+	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
+	Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 

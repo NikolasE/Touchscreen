@@ -86,26 +86,11 @@ bool projectToPlane(const CvPoint2D32f* pts, CvSize size, const Cloud& full_clou
 
 void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& upwards, Eigen::Vector3f& right){
 
-	//	for (int i=0; i<corners.points.size(); ++i){
-	//		Point p = corners.points[i];
-	//		printf("%i  %f %f %f \n",i, p.x,p.y,p.z);
-	//	}
+	int w_c = (corners.width-1)/2;
 
-	//	int w_2 = corners.width/2;
-	//	int h_2 = corners.height/2;
-	//
-	//	printf("w2,h2: %i %i \n", w_2, h_2);
-
-	Point c  = corners.at(corners.width/2, corners.height/2);
-	Point up = corners.points[corners.width/2];
+	Point c  = corners.at(w_c, corners.height/2);
+	Point up = corners.points[w_c];
 	Point r  = corners.at(corners.width-1, corners.height/2);
-
-	//		printf("c %f %f %f \n", c.x,c.y,c.z);
-	//		printf("up %f %f %f \n", up.x,up.y,up.z);
-	//		printf("r %f %f %f \n", r.x,r.y,r.z);
-
-	//	cout << "width " << corners.width << endl;
-	//	cout << "height " << corners.height << endl;
 
 	center = Eigen::Vector3f(c.x,c.y,c.z);
 	upwards = Eigen::Vector3f(up.x,up.y,up.z)-center;
@@ -113,14 +98,6 @@ void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& 
 
 	upwards.normalize();
 	right.normalize();
-
-
-
-	//	printf("c %f %f %f \n", center.x(),center.y(),center.z());
-	//	printf("up %f %f %f \n", upwards.x(),upwards.y(),upwards.z());
-	//	printf("right %f %f %f \n", right.x(),right.y(),right.z());
-
-
 
 }
 
