@@ -1,0 +1,22 @@
+current status:
+
+implemented:
+Detection of checkerboard
+masking of region of interest (manually and via the checkerboard)
+computation of trafo s.t. ROI is in x-y-Plane
+
+
+Todo:
+create fullscreen OpenCV image on Beamer
+Use normal of plane in trafo computation (should be more robust)
+Compute homographie from projector to Plane (via metric position of checkerboard corners)
+- Projectionmatrix of kinect given by openni-node
+
+
+MileStone:
+Kinect-Pixel to Beamerpixel: Kinect looks at plane, click on one point and change the corresponding projector-pixel color
+(freestyle drawing in the wall :)
+
+- Click: 'select on pixel' (x,y) (in Kinect RGB-Image) -> get corresponding 3d Point, apply trafo (x,y)->(x',y',0) where x' is 
+in metric coordinates in the plane. Apply projectionmatrix of Projector (x_p,y_p)
+
