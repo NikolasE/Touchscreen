@@ -9,9 +9,8 @@
 
 void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corners_3d, CvMat* H){
 
-	if (H->cols != 3)
-		H = cvCreateMat(3,3,CV_32FC1);
 
+	assert(H &&  H->cols == 3);
 
 	uint N = corners_3d.points.size();
 	assert(N == corners_2d.size());
@@ -22,21 +21,46 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 	if (cnt>N*0.01) {	ROS_WARN("found %f %% points with dist > 2cm", cnt*100.0/N); }
 
 
-
 	// create Matrices
 	CvMat* src = cvCreateMat(2,N,CV_32FC1);
 	CvMat* dst = cvCreateMat(2,N,CV_32FC1);
 
 	for (uint i=0; i<N; ++i){
-		cvSet2D(src,0,i,cvScalarAll(corners_2d.at(i).x));
-		cvSet2D(src,1,i,cvScalarAll(corners_2d.at(i).y));
+		cvSet2D(src,0,i,cvScalarAll(corners_3d.at(i).x));
+		cvSet2D(src,1,i,cvScalarAll(corners_3d.at(i).y));
 
-		cvSet2D(dst,0,i,cvScalarAll(corners_3d.at(i).x));
-		cvSet2D(dst,1,i,cvScalarAll(corners_3d.at(i).y));
+		cvSet2D(dst,0,i,cvScalarAll(corners_2d.at(i).x));
+		cvSet2D(dst,1,i,cvScalarAll(corners_2d.at(i).y));
+
+//		printf("from %f %f to %f %f \n", corners_3d.at(i).x,corners_3d.at(i).y,corners_2d.at(i).x,corners_2d.at(i).y);
+
 	}
 
+	// 2d = H*3d H*(x,y,1)
 
 	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
+
+//	CvMat* p_ = cvCreateMat(3,1,CV_32FC1);
+//	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
+//
+//	// compute residual error:
+//	for (uint i=0; i<N; ++i){
+//
+//		cvSet1D(p_,0,cvScalarAll(corners_3d.at(i).x));
+//		cvSet1D(p_,1,cvScalarAll(corners_3d.at(i).y));
+//		cvSet1D(p_,2,cvScalarAll(1));
+//
+//		cvMatMul(H, p_,p_proj);
+//
+//		float x_b = cvGet1D(p_proj,0).val[0];
+//		float y_b = cvGet1D(p_proj,1).val[0];
+//		float z_b = cvGet1D(p_proj,2).val[0];
+//
+//		printf("input: %f %f\n", corners_3d.at(i).x, corners_3d.at(i).y);
+//		printf("output: %f %f %f\n", x_b, y_b, z_b);
+//		printf("expected: %f %f\n\n", corners_2d.at(i).x,corners_2d.at(i).y);
+//
+//	}
 
 }
 
@@ -54,20 +78,54 @@ void drawCheckerboard(IplImage* img, const IplImage* mask, CvSize size, vector<C
 			maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
 		}
 
-//	ROS_INFO("x: %f %f, y: %f %f", minx,maxx, miny, maxy);
+	//	ROS_INFO("x: %f %f, y: %f %f", minx,maxx, miny, maxy);
 
-	float width = (maxx-minx)/(size.width+1);
-	float height = (maxy-miny)/(size.height+1);
 
-//	cvSet(img, cvScalarAll(255)); // all white
+	// draw white border with this size
+	// "Note: the function requires some white space (like a square-thick border,
+	//	the wider the better) around the board to make the detection more robust in various environment"
+	float border = 40;
+
+	float width = (maxx-minx-2*border)/(size.width+1);
+	float height = (maxy-miny-2*border)/(size.height+1);
+
+	//	ROS_INFO("w,h: %f %f", width, height);
+
+
+
+
+	cvSet(img, cvScalarAll(255)); // all white
+
+	minx += border;
+	miny += border;
 
 	// start with black square
 	for (int j = 0; j<=size.height; j++)
 		for (int i = (j%2); i<size.width+1; i+=2){
+
 			CvPoint lu = cvPoint(minx+i*width,miny+j*height);
 			CvPoint rl = cvPoint(minx+(i+1)*width,miny+(j+1)*height);
 			cvRectangle(img, lu, rl ,cvScalarAll(0), -1);
-			corners_2d.push_back(cvPoint2D32f(rl.x, rl.y));
+
+
+			CvPoint ru = cvPoint(rl.x,lu.y);
+
+			if (j==0) continue;
+
+			if (i>0){
+				corners_2d.push_back(cvPoint2D32f(lu.x, lu.y));
+				//				cvCircle(img, cvPoint(lu.x, lu.y),20, CV_RGB(255,0,0),3);
+			}
+
+			if (i<size.width){
+				corners_2d.push_back(cvPoint2D32f(ru.x, ru.y));
+				//				cvCircle(img, cvPoint(ru.x, ru.y),20, CV_RGB(255,0,0),3);
+			}
+
 		}
+
+
+
+	assert(int(corners_2d.size()) == size.width*size.height);
 
 }

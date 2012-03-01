@@ -44,7 +44,9 @@ using namespace message_filters;
 int cnt=0;
 vector<CvPoint> mask_points;
 
-CvMat* proj_Hom;
+Cloud full_cloud_moved;
+
+CvMat* proj_Hom = cvCreateMat(3,3,CV_32FC1);
 
 
 const CvSize C_checkboard_size = cvSize(6,4);
@@ -59,13 +61,15 @@ bool kinect_trafo_valid = false;
 // region of the projector image where the checkerboard will be drawn
 IplImage* board_mask = NULL;
 IplImage* projector_image = NULL;
-const CvSize C_proj_size = cvSize(1280,640);
+const CvSize C_proj_size = cvSize(1280,1024);
+//const CvSize C_proj_size = cvSize(640,480);
+
 vector<CvPoint2D32f> projector_corners; // position of internal corners on the projector image
 
 
 // define this to compute the depth-mask from the detected checkerbord
 // if not defined, the user can select four points manually to define the mask
-// #define MASK_FROM_DETECTIONS
+#define MASK_FROM_DETECTIONS
 
 
 void on_mouse( int event, int x, int y, int flags, void* param ){
@@ -75,29 +79,38 @@ void on_mouse( int event, int x, int y, int flags, void* param ){
 
 
 void on_mouse_projector( int event, int x, int y, int flags, void* param ){
+
 	Cloud* cloud = (Cloud*)param;
 	if (event != CV_EVENT_LBUTTONUP) return;
 
+//	ROS_INFO("cloud has %i points", (int) cloud->points.size());
+
 	// get 3d point at this position
+	assert(cloud);
+
 	Point p = cloud->at(x,y);
+
 	if (p.x != p.x) {ROS_WARN("Point has no depth!"); return;}
 
-	assert(proj_Hom);
+//	ROS_INFO("Clicked point: %i %i, #d: %f %f %f", x,y, p.x,p.y,p.z);
 
 	// use homography to move from plane to projector
-	CvMat* p_ = cvCreateMat(1,3,CV_32FC1);
+	CvMat* p_ = cvCreateMat(3,1,CV_32FC1);
 	cvSet1D(p_,0,cvScalarAll(p.x));
 	cvSet1D(p_,1,cvScalarAll(p.y));
-	cvSet1D(p_,2,cvScalarAll(p.z));
+	cvSet1D(p_,2,cvScalarAll(1));
 
-	CvMat p_proj;
-	cvMul(proj_Hom, p_,&p_proj);
 
-	float x_b = cvGet1D(&p_proj,0).val[0];
-	float y_b = cvGet1D(&p_proj,1).val[0];
-	float z_b = cvGet1D(&p_proj,1).val[0];
+	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
 
-	ROS_INFO("Projected: %f %f %f", x_b, y_b, z_b);
+
+	cvMatMul(proj_Hom, p_,p_proj);
+
+	float x_b = cvGet1D(p_proj,0).val[0];
+	float y_b = cvGet1D(p_proj,1).val[0];
+//	float z_b = cvGet1D(p_proj,2).val[0];
+
+//	ROS_INFO("Projected: %f %f %f", x_b, y_b, z_b);
 
 	cvCircle(projector_image, cvPoint(x_b,y_b),20, CV_RGB(255,0,0),-1);
 
@@ -138,20 +151,18 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
-	//	cout << "CALLBACK" << endl;
-	sensor_msgs::CvBridge bridge;
 
+	sensor_msgs::CvBridge bridge;
 
 
 	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
 
-//	// fake projector:
-//	// IplImage* board = cvCloneImage(col);
-//	vector<CvPoint2D32f> pts;
-//	drawCheckerboard(col,mask_image,C_checkboard_size, pts);
-////	cvShowImage("board", board);
-//
-
+	//	// fake projector:
+	//	// IplImage* board = cvCloneImage(col);
+	//	vector<CvPoint2D32f> pts;
+	//	drawCheckerboard(col,mask_image,C_checkboard_size, pts);
+	////	cvShowImage("board", board);
+	//
 
 
 	CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
@@ -160,17 +171,30 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 	if (!kinect_trafo_valid){
 
-		cout << "no trafo" << endl;
+		ROS_INFO("Searching for checkerboard");
+
+
+		int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
+
 
 		IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
+
 		cvCvtColor(col,gray, CV_BGR2GRAY);
-		int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt);
+
+		cvNamedWindow("g",0);
+		cvShowImage("g", gray);
+
+
 		cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
 		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
 
 		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
+		cvShowImage("view", col);
 
+		cout << "found " << c_cnt << endl;
 
+		if (board_found){ ROS_WARN("FOUND THE BOARD");
+		}else { 	ROS_WARN("Board was not found!"); return; }
 	}
 
 
@@ -199,17 +223,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	if (depth_mask_valid)
 		showMaskOnImage(col, mask_image);
 
-
+	// show larger image:
+//	IplImage* large = cvCreateImage(cvSize(2*col->width,2*col->height), col->depth, col->nChannels);
+//	cvResize(col, large);
 	cvShowImage("view", col);
 	cvWaitKey(10);
 
 
-	if (!board_found && !kinect_trafo_valid){
-		ROS_INFO("Checkerboard was not found!");
-		return;
-	}
 
-	if (!depth_mask_valid) return;
+	if (!depth_mask_valid){ ROS_INFO("No depth mask!"); return; }
 
 	// fit plane to pointcloud:
 	Cloud cloud;
@@ -244,6 +266,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 		computeHomography(projector_corners,corners_in_xy_plane,proj_Hom);
 
+		assert(proj_Hom);
+
+		for (uint i=0; i<3; ++i){
+			for (uint j=0; j<3; ++j){
+				cout << cvmGet(proj_Hom,i,j) << " "; }
+			cout << endl;
+		}
+
+
 		ROS_INFO("Computed projector Homography");
 
 	}
@@ -254,12 +285,14 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 	// everything is set up!
-	cvSetMouseCallback("board",on_mouse_projector,&trans);
+
+	pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
+	cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
 
 
 
 	// mark points close to the board
-// #define MINMAX
+	// #define MINMAX
 #ifdef MINMAX
 	float minz = 100;
 	float maxz = -100;
@@ -294,7 +327,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 
-	Cloud::Ptr msg = trans.makeShared();
+	Cloud::Ptr msg = full_cloud_moved.makeShared();
 	msg->header.frame_id = "/openni_rgb_optical_frame";
 	msg->header.stamp = ros::Time::now ();
 	pub.publish(msg);
@@ -308,14 +341,15 @@ int main(int argc, char ** argv)
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
 	cvNamedWindow("view", 0);
-//	cvMoveWindow("view", 1500, 100);
-
-
-
 
 
 	// load projector mask and show fullscreen on secondary screen:
 	IplImage* board_mask = cvLoadImage("data/proj_mask.png",0);
+	if (!board_mask){
+		board_mask = cvCreateImage(C_proj_size, IPL_DEPTH_8U,1);
+		cvSet(board_mask, cvScalarAll(255));
+		ROS_INFO("Found no projector mask, using total area");
+	}
 	if (board_mask->width !=  C_proj_size.width){
 		ROS_ERROR("mask for projector image has not the same size as the projector screen!!");
 	}
@@ -343,15 +377,15 @@ int main(int argc, char ** argv)
 	depth_mask_valid = (mask_image != NULL);
 	if (!depth_mask_valid){ // file was not found
 		mask_image = cvCreateImage(cvSize(640,480), IPL_DEPTH_8U, 1);
-		cerr << "no depth-mask found" << endl;
+		ROS_WARN("no depth-mask found");
 #ifdef MASK_FROM_DETECTIONS
-		cout << "mask will be computed from first full view of checkerboard" << endl;
+		ROS_INFO("mask will be computed from first full view of checkerboard");
 #else
-		cout << "select for points in image to create new mask!" << endl;
+		ROS_INFO("select four points in image to create new mask!");
 		cvSetMouseCallback("view",on_mouse,&mask_points);
 #endif
 	}else{
-		cout << "depth-mask was loaded from data/mask.png" << endl;
+		ROS_INFO("depth-mask was loaded from data/mask.png");
 	}
 
 
