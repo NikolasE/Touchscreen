@@ -21,7 +21,7 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
  * assumes quite rectangular and axis aligned mask
  * w,h: internal corners (7,7 for chess checkerboard)
  */
-void drawCheckerboard(IplImage* img,const IplImage* mask, int w, int h, vector<CvPoint2D32f>& corners_2d);
+void drawCheckerboard(IplImage* img,const IplImage* mask, CvSize size, vector<CvPoint2D32f>& corners_2d);
 
 
 

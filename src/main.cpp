@@ -44,6 +44,7 @@ using namespace message_filters;
 int cnt=0;
 vector<CvPoint> mask_points;
 
+CvMat* proj_Hom;
 
 
 const CvSize C_checkboard_size = cvSize(6,4);
@@ -54,6 +55,12 @@ bool depth_mask_valid;
 // the first trafo is stored and used for all following frames
 Eigen::Affine3f kinect_trafo;
 bool kinect_trafo_valid = false;
+
+// region of the projector image where the checkerboard will be drawn
+IplImage* board_mask = NULL;
+IplImage* projector_image = NULL;
+const CvSize C_proj_size = cvSize(1280,640);
+vector<CvPoint2D32f> projector_corners; // position of internal corners on the projector image
 
 
 // define this to compute the depth-mask from the detected checkerbord
@@ -105,16 +112,12 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 	IplImage* col = bridge.imgMsgToCv(img_ptr, "bgr8");
 
-	// fake projector:
-	// IplImage* board = cvCloneImage(col);
-	vector<CvPoint2D32f> pts;
-	drawCheckerboard(col,mask_image,C_checkboard_size.width, C_checkboard_size.height, pts);
-//	cvShowImage("board", board);
-
-
-
-
-
+//	// fake projector:
+//	// IplImage* board = cvCloneImage(col);
+//	vector<CvPoint2D32f> pts;
+//	drawCheckerboard(col,mask_image,C_checkboard_size, pts);
+////	cvShowImage("board", board);
+//
 
 
 
@@ -199,13 +202,24 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		kinect_trafo_valid = true;
 		ROS_INFO("found checkerboard and computed trafo");
 
+		// compute homography between screen and Beamer:
+
+		Cloud corners_in_xy_plane;
+		pcl::getTransformedPointCloud(projected, kinect_trafo, corners_in_xy_plane);
+
+		computeHomography(projector_corners,corners_in_xy_plane,proj_Hom);
+
+		ROS_INFO("Computed projector Homography");
+
+
+
+
 	}
 
 	Cloud trans;
 	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
 
-//	vector<CvPoint2D32f> pts;
-//	computeHomography(pts, trans, NULL);
+
 
 
 
@@ -263,9 +277,27 @@ int main(int argc, char ** argv)
 	cvNamedWindow("view", 0);
 	// move on second screen and then go fullscreen
 	cvMoveWindow("view", 1500, 100);
-//	 cvSetWindowProperty("view", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+//
+
+
+
+
+	// load projector mask and show fullscreen on secondary screen:
+	IplImage* board_mask = cvLoadImage("data/proj_mask.png",0);
+	if (board_mask->width !=  C_proj_size.width){
+		ROS_ERROR("mask for projector image has not the same size as the projector screen!!");
+	}
+	// draw board on image and store position of internal corners
+	projector_image = cvCreateImage(C_proj_size, IPL_DEPTH_32F, 3);
+	drawCheckerboard(projector_image, board_mask, C_checkboard_size,projector_corners);
 
 	cvNamedWindow("board", 0);
+	cvMoveWindow("board", 1500, 100); // assuming secondary monitor is right of primary
+	cvSetWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+	cvShowImage("board", projector_image);
+
+
+
 
 
 

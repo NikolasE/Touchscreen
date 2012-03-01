@@ -9,6 +9,9 @@
 
 void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corners_3d, CvMat* H){
 
+	if (H->cols != 3)
+		H = cvCreateMat(3,3,CV_32FC1);
+
 
 	uint N = corners_3d.points.size();
 	assert(N == corners_2d.size());
@@ -35,11 +38,22 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 
 	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
 
+
+
+
+
+
+
+
+
+
+
+
 }
 
 
 
-void drawCheckerboard(IplImage* img, const IplImage* mask, int w, int h, vector<CvPoint2D32f>& corners_2d){
+void drawCheckerboard(IplImage* img, const IplImage* mask, CvSize size, vector<CvPoint2D32f>& corners_2d){
 
 	// get region of checkerboard
 	float minx,maxx, miny, maxy;
@@ -53,14 +67,14 @@ void drawCheckerboard(IplImage* img, const IplImage* mask, int w, int h, vector<
 
 //	ROS_INFO("x: %f %f, y: %f %f", minx,maxx, miny, maxy);
 
-	float width = (maxx-minx)/(w+1);
-	float height = (maxy-miny)/(h+1);
+	float width = (maxx-minx)/(size.width+1);
+	float height = (maxy-miny)/(size.height+1);
 
 //	cvSet(img, cvScalarAll(255)); // all white
 
 	// start with black square
-	for (int j = 0; j<=h; j++)
-		for (int i = (j%2); i<w+1; i+=2){
+	for (int j = 0; j<=size.height; j++)
+		for (int i = (j%2); i<size.width+1; i+=2){
 			CvPoint lu = cvPoint(minx+i*width,miny+j*height);
 			CvPoint rl = cvPoint(minx+(i+1)*width,miny+(j+1)*height);
 			cvRectangle(img, lu, rl ,cvScalarAll(0), -1);
