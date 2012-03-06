@@ -42,6 +42,12 @@ using namespace sensor_msgs;
 using namespace message_filters;
 
 
+
+enum Calib_state  {GET_HOMOGRAPHY,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_SETUP};
+
+Calib_state prog_state = GET_HOMOGRAPHY;
+
+
 int cnt=0;
 vector<CvPoint> mask_points;
 
@@ -71,16 +77,20 @@ vector<CvPoint2D32f> projector_corners; // position of internal corners on the p
 // coordinate system in plane
 Vector3f pl_center, pl_upwards, pl_right;
 
+Cloud corners_3d;
+
+
 
 // define this to compute the depth-mask from the detected checkerbord
 // if not defined, the user can select four points manually to define the mask
 #define MASK_FROM_DETECTIONS
 
 
-void on_mouse( int event, int x, int y, int flags, void* param ){
+void on_mouse_mask( int event, int x, int y, int flags, void* param ){
 	vector<CvPoint>* vec = (vector<CvPoint>*)param;
 	if (event == CV_EVENT_LBUTTONUP) vec->push_back(cvPoint(x,y));
 }
+
 
 
 void on_mouse_projector( int event, int x, int y, int flags, void* param ){
@@ -139,28 +149,42 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 	sensor_msgs::CvBridge bridge;
 
-
 	col = bridge.imgMsgToCv(img_ptr, "bgr8");
+
+	if (depth_mask_valid){
+		showMaskOnImage(col, mask_image);
+		cvShowImage("camera", col);
+	}else{
+		cvShowImage("camera", col);
+	}
+
+	short c = cv::waitKey(50);
+
+	if (c == -1) return;
+
+	if (c == 'a')
+		prog_state = GET_PROJECTION;
+
+
 
 	CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
 	int c_cnt=0;
 	bool board_found = false;
 
-	if (!kinect_trafo_valid){
+	if (prog_state == GET_HOMOGRAPHY || prog_state == COLLECT_PATTERNS){
 
 		ROS_INFO("Searching for checkerboard");
 
-		int found = cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
+		cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
 		board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
 
-
 		if (board_found){ ROS_WARN("Checkerboard was detected");
-		}else { 	ROS_WARN("Board was not found!"); return; }
+		}else { ROS_WARN("Board was not found!"); return; }
 
 		IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
 		cvCvtColor(col,gray, CV_BGR2GRAY);
 		cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
-		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
+		//		cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,found);
 	}
 
 
@@ -186,23 +210,19 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	}
 #endif
 
-	if (depth_mask_valid)
-		showMaskOnImage(col, mask_image);
 
-	cvShowImage("view", col);
-
-
-	if (!depth_mask_valid){ ROS_INFO("No depth mask!"); return; }
-
-	// fit plane to pointcloud:
 	Cloud cloud;
 	pcl::fromROSMsg(*cloud_ptr, cloud);
 
-	Cloud filtered;
-	applyMask(cloud, filtered,mask_image);
+
+	if (prog_state == GET_HOMOGRAPHY){
+		if (!depth_mask_valid){ ROS_INFO("No depth mask!"); return; }
+
+		// fit plane to pointcloud:
 
 
-	if (!kinect_trafo_valid){
+		Cloud filtered;
+		applyMask(cloud, filtered,mask_image);
 
 		Eigen::Vector4f model;
 		fitPlaneToCloud(filtered, model);
@@ -215,30 +235,60 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 		defineAxis(projected, pl_center, pl_upwards, pl_right);
 		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_right,model.head<3>(), pl_center, kinect_trafo);
-
-		kinect_trafo_valid = true;
-
 		// compute homography between screen and Beamer:
 		Cloud corners_in_xy_plane;
 		pcl::getTransformedPointCloud(projected, kinect_trafo, corners_in_xy_plane);
 
 		computeHomography(projector_corners,corners_in_xy_plane,proj_Hom);
-//		for (uint i=0; i<3; ++i){
-//			for (uint j=0; j<3; ++j){
-//				cout << cvmGet(proj_Hom,i,j) << " "; }
-//			cout << endl; 	}
-		ROS_WARN("Computed Homography");
+		//		for (uint i=0; i<3; ++i){
+		//			for (uint j=0; j<3; ++j){
+		//				cout << cvmGet(proj_Hom,i,j) << " "; }
+		//			cout << endl; 	}
+		ROS_INFO("Computed Homography");
+
+		prog_state = COLLECT_PATTERNS;
+
+		// TODO: Save Homography
 	}
 
-	Cloud trans;
-	pcl::getTransformedPointCloud(filtered, kinect_trafo, trans);
+
+	Cloud transformed_cloud;
+	if (prog_state == COLLECT_PATTERNS){
+
+
+		Cloud c_3d;
+		// get 3dPose at the corner positions:
+		vector<int> inlier;
+		for (int i=0; i<c_cnt; ++i){
+			Point p = cloud.at(corners[i].x, corners[i].y);
+			if (!(p.x == p.x)){ROS_WARN("projectToPlane: Found Corner without depth!"); return; }
+			c_3d.points.push_back(p);
+		}
+
+
+		// trafo into first frame:
+		pcl::getTransformedPointCloud(c_3d, kinect_trafo, c_3d);
+		// and append to the list of all detections
+		corners_3d.points.insert(corners_3d.points.end(),c_3d.points.begin(), c_3d.points.end());
+
+		cout << "corners_3d.size: " << corners_3d.points.size() << endl;
+
+
+	}
+
+
+	if (prog_state == GET_PROJECTION){
+		computeProjectionMatrix(corners_3d, projector_corners);
+	}
+
+
 
 	// everything is set up!
-	pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
-	cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
+	//	pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
+	//	cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
 
 
-
+	/*
 	// mark points close to the board
 	// #define MINMAX
 #ifdef MINMAX
@@ -259,14 +309,14 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		if (p.z < 0.05){
 			g = 255;
 			// save point on plane
-//			Vector2f px;
-//			transformInPlaneCoordinates(cvPoint3D32f(p.x,p.y,p.z),px, pl_center, pl_upwards, pl_right);
+			//			Vector2f px;
+			//			transformInPlaneCoordinates(cvPoint3D32f(p.x,p.y,p.z),px, pl_center, pl_upwards, pl_right);
 
 			CvPoint proj;
 			applyHomography(cvPoint2D32f(p.x,p.y),proj_Hom,proj);
 
 
-//			ROS_INFO("pt: %f %f %f px: %f %f", p.x,p.y,p.z, px.x(), px.y());
+			//			ROS_INFO("pt: %f %f %f px: %f %f", p.x,p.y,p.z, px.x(), px.y());
 			ROS_INFO("projected to: %i %i", proj.x, proj.y);
 			cvCircle(projector_image, proj,20, CV_RGB(255,0,0),-1);
 			cvShowImage("board", projector_image);
@@ -289,9 +339,9 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	printf("min,max %f %f \n", minz, maxz);
 #endif
 
+	 */
 
-
-	Cloud::Ptr msg = trans.makeShared();
+	Cloud::Ptr msg = transformed_cloud.makeShared();
 	msg->header.frame_id = "/openni_rgb_optical_frame";
 	msg->header.stamp = ros::Time::now ();
 	pub.publish(msg);
@@ -304,8 +354,8 @@ int main(int argc, char ** argv)
 {
 	ros::init(argc, argv, "subscriber");
 	ros::NodeHandle nh;
-	cvNamedWindow("view", 1);
-
+	cvNamedWindow("camera", 1);
+	//	cvNamedWindow("mask",1);
 
 	// load projector mask and show fullscreen on secondary screen:
 	IplImage* board_mask = cvLoadImage("data/proj_mask.png",0);
@@ -329,10 +379,7 @@ int main(int argc, char ** argv)
 
 
 
-
-
-
-	pub = nh.advertise<Cloud> ("projected", 1);
+	pub = nh.advertise<Cloud>("projected", 1);
 
 
 
@@ -346,7 +393,7 @@ int main(int argc, char ** argv)
 		ROS_INFO("mask will be computed from first full view of checkerboard");
 #else
 		ROS_INFO("select four points in image to create new mask!");
-		cvSetMouseCallback("view",on_mouse,&mask_points);
+		cvSetMouseCallback("view",on_mouse_mask,&mask_points);
 #endif
 	}else{
 		ROS_INFO("depth-mask was loaded from data/mask.png");
@@ -355,11 +402,6 @@ int main(int argc, char ** argv)
 
 
 	cvStartWindowThread();
-
-
-
-
-
 
 
 	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
@@ -373,7 +415,7 @@ int main(int argc, char ** argv)
 
 	ros::spin();
 
-	cvDestroyWindow("view");
+	cvDestroyWindow("camera");
 
 	return 0;
 

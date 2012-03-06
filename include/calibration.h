@@ -30,4 +30,8 @@ void applyHomography(const CvPoint2D32f& p,const CvMat* H, CvPoint& p_);
 
 
 
+void computeProjectionMatrix(const Cloud& corners, const vector<CvPoint2D32f>& projector_corners);
+
+
+
 #endif /* CALIBRATION_H_ */
