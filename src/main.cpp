@@ -99,7 +99,7 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 	if (event != CV_EVENT_LBUTTONUP) return;
 
 	// get 3d point at this position
-	Point p = cloud->at(x,y);
+	pcl_Point p = cloud->at(x,y);
 
 	if (p.z != p.z) {ROS_WARN("Point has no depth!"); return;}
 	if (abs(p.z) > 0.03) {ROS_WARN("Point is not in plane!"); return;}
@@ -260,7 +260,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		// get 3dPose at the corner positions:
 		vector<int> inlier;
 		for (int i=0; i<c_cnt; ++i){
-			Point p = cloud.at(corners[i].x, corners[i].y);
+			pcl_Point p = cloud.at(corners[i].x, corners[i].y);
 			if (!(p.x == p.x)){ROS_WARN("projectToPlane: Found Corner without depth!"); return; }
 			c_3d.points.push_back(p);
 		}

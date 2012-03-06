@@ -17,7 +17,7 @@ void applyMask(const Cloud& orig, Cloud& masked, const IplImage* mask){
 	for (int x=0; x<mask->width; ++x)
 		for (int y=0; y<mask->height; ++y){
 			if (cvGet2D(mask,y,x).val[0] == 0) continue;
-			Point p = orig.at(x,y);
+			pcl_Point p = orig.at(x,y);
 			if (p.x == p.x){ // cloud contains NANs!
 				masked.points.push_back(p);
 				//				cout << p.x << endl;
@@ -30,13 +30,13 @@ void applyMask(const Cloud& orig, Cloud& masked, const IplImage* mask){
 // fit plane to cloud, returns percentage of inliers
 float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients){
 	// http://pointclouds.org/documentation/tutorials/random_sample_consensus.php#random-sample-consensus
-	pcl::SampleConsensusModelPlane<Point>::Ptr
-	model_p (new pcl::SampleConsensusModelPlane<Point> (cloud.makeShared()));
+	pcl::SampleConsensusModelPlane<pcl_Point>::Ptr
+	model_p (new pcl::SampleConsensusModelPlane<pcl_Point> (cloud.makeShared()));
 
 	float max_dist_m = 0.01;
 
 	std::vector<int> inliers;
-	pcl::RandomSampleConsensus<Point> ransac (model_p);
+	pcl::RandomSampleConsensus<pcl_Point> ransac (model_p);
 	ransac.setDistanceThreshold(max_dist_m);
 	ransac.computeModel();
 	ransac.getInliers(inliers);
@@ -65,14 +65,14 @@ bool projectToPlane(const CvPoint2D32f* pts, CvSize size, const Cloud& full_clou
 
 	vector<int> inlier; inlier.resize(pnt_cnt);
 	for (int i=0; i<pnt_cnt; ++i){
-		Point p = full_cloud.at(pts[i].x, pts[i].y);
+		pcl_Point p = full_cloud.at(pts[i].x, pts[i].y);
 		if (!(p.x == p.x)){ROS_WARN("projectToPlane: Found Corner without depth!"); return false; }
 		corners.points.push_back(p);
 		inlier.push_back(i);// add every point as inlier
 	}
 
-	pcl::SampleConsensusModelPlane<Point>::Ptr
-	model (new pcl::SampleConsensusModelPlane<Point> (corners.makeShared()));
+	pcl::SampleConsensusModelPlane<pcl_Point>::Ptr
+	model (new pcl::SampleConsensusModelPlane<pcl_Point> (corners.makeShared()));
 	model->projectPoints(inlier, coefficients,projected);
 
 	//	for (int i=0; i<pnt_cnt; ++i){
@@ -88,9 +88,9 @@ void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& 
 
 	int w_c = (corners.width-1)/2;
 
-	Point c  = corners.at(w_c, corners.height/2);
-	Point up = corners.points[w_c];
-	Point r  = corners.at(corners.width-1, corners.height/2);
+	pcl_Point c  = corners.at(w_c, corners.height/2);
+	pcl_Point up = corners.points[w_c];
+	pcl_Point r  = corners.at(corners.width-1, corners.height/2);
 
 	center = Eigen::Vector3f(c.x,c.y,c.z);
 	upwards = Eigen::Vector3f(up.x,up.y,up.z)-center;
@@ -106,7 +106,7 @@ void transformInPlaneCoordinates(const Cloud& corners, vector<Vector2f>& coords,
 
 	coords.reserve(corners.points.size());
 	for (uint i=0; i<corners.points.size(); ++i){
-		Point c = corners.points[i];
+		pcl_Point c = corners.points[i];
 		Vector3f p = Eigen::Vector3f(c.x,c.y,c.z)-center;
 		float u = upwards.dot(p);
 		float r = right.dot(p);
@@ -118,7 +118,7 @@ void transformInPlaneCoordinates(const Cloud& corners, vector<Vector2f>& coords,
 
 void transformInPlaneCoordinates(const CvPoint3D32f p, Vector2f& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right){
 	Cloud c;
-	Point p_;
+	pcl_Point p_;
 	p_.x = p.x; p_.y = p.y; p_.z = p.z;
 	c.points.push_back(p_);
 	vector<Vector2f> c_vec;

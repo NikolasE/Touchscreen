@@ -19,8 +19,8 @@
 
 #include <opencv/cv.h>
 
-typedef pcl::PointXYZRGB Point;
-typedef pcl::PointCloud<Point> Cloud;
+typedef pcl::PointXYZRGB pcl_Point;
+typedef pcl::PointCloud<pcl_Point> Cloud;
 typedef Eigen::Vector3f Vector3f;
 typedef Eigen::Vector2f Vector2f;
 
