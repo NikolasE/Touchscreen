@@ -29,8 +29,12 @@ void applyHomography(const CvPoint2D32f& p,const CvMat* H, CvPoint& p_);
 
 
 
+void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed);
+void scalePixels(const vector<CvPoint2D32f>& pxs,cv::Mat& T, vector<CvPoint2D32f>& transformed);
 
-void computeProjectionMatrix(const Cloud& corners, const vector<CvPoint2D32f>& projector_corners);
+
+
+void computeProjectionMatrix(cv::Mat& P, const Cloud& corners, const vector<CvPoint2D32f>& projector_corners);
 
 
 

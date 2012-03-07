@@ -48,6 +48,8 @@ enum Calib_state  {GET_HOMOGRAPHY,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_SE
 Calib_state prog_state = GET_HOMOGRAPHY;
 
 
+cv::Mat proj_Matrix;
+
 int cnt=0;
 vector<CvPoint> mask_points;
 
@@ -146,6 +148,7 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
+	//	cout << "callback" << endl;
 
 	sensor_msgs::CvBridge bridge;
 
@@ -273,12 +276,18 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 		cout << "corners_3d.size: " << corners_3d.points.size() << endl;
 
-
 	}
 
 
 	if (prog_state == GET_PROJECTION){
-		computeProjectionMatrix(corners_3d, projector_corners);
+		computeProjectionMatrix(proj_Matrix, corners_3d, projector_corners);
+		prog_state = COLLECT_PATTERNS;
+		cout << "write" << endl << proj_Matrix << endl;
+		cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
+		assert(fs.isOpened());
+		fs << "ProjectionMatrix" << proj_Matrix;
+		fs.release();
+
 	}
 
 
