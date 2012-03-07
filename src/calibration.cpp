@@ -299,9 +299,6 @@ void drawCheckerboard(cv::Mat* img, const cv::Mat* mask, cv::Size size, vector<c
 			maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
 		}
 
-	//	ROS_INFO("x: %f %f, y: %f %f", minx,maxx, miny, maxy);
-
-
 	// draw white border with this size
 	// "Note: the function requires some white space (like a square-thick border,
 	//	the wider the better) around the board to make the detection more robust in various environment"
@@ -309,10 +306,6 @@ void drawCheckerboard(cv::Mat* img, const cv::Mat* mask, cv::Size size, vector<c
 
 	float width = (maxx-minx-2*border)/(size.width+1);
 	float height = (maxy-miny-2*border)/(size.height+1);
-
-	//	ROS_INFO("w,h: %f %f", width, height);
-
-
 
 	img->setTo(255); // all white
 
@@ -327,24 +320,18 @@ void drawCheckerboard(cv::Mat* img, const cv::Mat* mask, cv::Size size, vector<c
 			cv::Point2f rl = cv::Point2f(minx+(i+1)*width,miny+(j+1)*height);
 			cv::rectangle(*img, lu, rl ,cv::Scalar::all(0), -1);
 
-
 			cv::Point2f ru = cvPoint(rl.x,lu.y);
 
 			if (j==0) continue;
-
 			if (i>0){
 				corners_2d.push_back(cv::Point2f(lu.x, lu.y));
 				//				cvCircle(img, cvPoint(lu.x, lu.y),20, CV_RGB(255,0,0),3);
 			}
-
 			if (i<size.width){
 				corners_2d.push_back(cv::Point2f(ru.x, ru.y));
 				//				cvCircle(img, cvPoint(ru.x, ru.y),20, CV_RGB(255,0,0),3);
 			}
-
 		}
-
-
 
 	assert(int(corners_2d.size()) == size.width*size.height);
 

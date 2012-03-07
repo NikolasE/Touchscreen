@@ -12,7 +12,7 @@
 #include "calibration.h"
 
 
-//void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat )
+void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat& P, cv::Mat& img);
 
 
 

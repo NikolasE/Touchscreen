@@ -157,16 +157,17 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 	col = bridge.imgMsgToCv(img_ptr, "bgr8");
 
-	if (depth_mask_valid){
-		showMaskOnImage(col, mask_image);
+//	if (depth_mask_valid){
+//		cv::Mat cpy = col;
+//		showMaskOnImage(cpy, mask_image);
+//		cvShowImage("camera", cpy);
+//	}else{
 		cvShowImage("camera", col);
-	}else{
-		cvShowImage("camera", col);
-	}
+//	}
 
 	short c = cv::waitKey(50);
 
-	if (c == -1) return;
+	if (prog_state != EVERYTHING_SETUP && c == -1) return;
 
 	if (c == 'a')
 		prog_state = GET_PROJECTION;
@@ -240,7 +241,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 		defineAxis(projected, pl_center, pl_upwards, pl_right);
-		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_right,model.head<3>(), pl_center, kinect_trafo);
+		pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_right,-model.head<3>(), pl_center, kinect_trafo);
 		// compute homography between screen and Beamer:
 		Cloud corners_in_xy_plane;
 		pcl::getTransformedPointCloud(projected, kinect_trafo, corners_in_xy_plane);
@@ -259,13 +260,11 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		ROS_INFO("Saved kinect_trafo to data/kinect_trafo.txt");
 
 		prog_state = COLLECT_PATTERNS;
-
 	}
 
 
-	Cloud transformed_cloud;
+	// Cloud transformed_cloud;
 	if (prog_state == COLLECT_PATTERNS){
-
 
 		Cloud c_3d;
 		// get 3dPose at the corner positions:
@@ -276,14 +275,12 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 			c_3d.points.push_back(p);
 		}
 
-
 		// trafo into first frame:
 		pcl::getTransformedPointCloud(c_3d, kinect_trafo, c_3d);
 		// and append to the list of all detections
 		corners_3d.points.insert(corners_3d.points.end(),c_3d.points.begin(), c_3d.points.end());
 
 		cout << "corners_3d.size: " << corners_3d.points.size() << endl;
-
 	}
 
 
@@ -301,22 +298,35 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 	if (prog_state == EVERYTHING_SETUP){
 		pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
 
-		// project cloud into image:
+		//		// project cloud into image:
+				projectCloudIntoProjector(full_cloud_moved,proj_Matrix, projector_image);
+				cv::imshow("board", projector_image);
+				cv::setWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
 
-
-
-
-
-
+//				cv::namedWindow("foo");
+//				cv::imshow("foo", projector_image);
 	}
 
 
+	if (kinect_trafo_valid){
+
+//		cout << "sending cloud" << endl;
+		Cloud filtered;
+		applyMask(cloud, filtered,mask_image);
+		pcl::getTransformedPointCloud(filtered,kinect_trafo,full_cloud_moved);
+
+		Cloud::Ptr msg = full_cloud_moved.makeShared();
+		msg->header.frame_id = "/openni_rgb_optical_frame";
+		msg->header.stamp = ros::Time::now ();
+		pub.publish(msg);
 
 
+//		pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
+//		cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
+
+	}
 
 	// everything is set up!
-	//	pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
-	//	cvSetMouseCallback("view",on_mouse_projector,&full_cloud_moved);
 
 
 	/*
@@ -372,10 +382,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 	 */
 
-	Cloud::Ptr msg = transformed_cloud.makeShared();
-	msg->header.frame_id = "/openni_rgb_optical_frame";
-	msg->header.stamp = ros::Time::now ();
-	pub.publish(msg);
+
 
 }
 
@@ -435,9 +442,17 @@ int main(int argc, char ** argv)
 	// read kinect_trafo
 	kinect_trafo_valid = loadMatrix(kinect_trafo,"data/kinect_trafo.txt");
 
-	if (kinect_trafo_valid)
+	if (kinect_trafo_valid){
 		ROS_INFO("found kinect_trafo");
+		for (uint i=0; i<4; ++i){
+			for (uint j=0; j<4; ++j)
+				cout << kinect_trafo(i,j) << " ";
+			cout << endl;
+		}
 
+
+
+	}
 
 	// and Homography
 	cv::FileStorage fs("data/Homography.yml", cv::FileStorage::READ);
@@ -447,6 +462,9 @@ int main(int argc, char ** argv)
 	// look for Projection matrix:
 	cv::FileStorage fs2("data/projection_matrix.yml", cv::FileStorage::READ);
 	fs2["ProjectionMatrix"] >> proj_Matrix;
+	if (proj_Matrix.cols > 0){
+		cout << "projection" << endl << proj_Matrix << endl;
+	}
 
 	if (kinect_trafo_valid && proj_Hom.cols > 0 && proj_Matrix.cols > 0){
 		ROS_INFO("Loaded everything from file");
@@ -457,9 +475,9 @@ int main(int argc, char ** argv)
 	cvStartWindowThread();
 
 	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
-	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 5);
-	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 5);
-	Synchronizer<policy> sync(policy(5), image_sub, cloud_sub);
+	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
+	message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
+	Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 
