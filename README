@@ -1,5 +1,7 @@
 Kinect-Touchscreen
 
+see the imgs/ to see the current status!
+
 The goal of this project is to build a prototype for a large touchscreen 
 with a projector and a Kinect (or any similar RGBD-Camera). 
 The projector is used to project any input on a flat surface 
@@ -30,6 +32,7 @@ How to use:
   to compute the Homogeneous between table and projector. For the other views, take a large cardboard so that the checkerboard
   is transformed.
 - if you have collected enough images, press 'a' to compute the projectionmatrix of the projector. 
+- place an object (yourself) in front of the plane and enjoy the colors :)
 
 
 
