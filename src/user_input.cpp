@@ -36,14 +36,22 @@ void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat& P, cv::Mat& im
 		if (x<0 || x >= w || y < 0 || y >= h)
 			continue;
 
-		if (z < - 0.2){
-//			cout << z << endl;
-//			ROS_INFO("z: %f x,y: %i %i", z,x,y);
-			cv::circle(img, cv::Point(x,y), 2, cv::Scalar(255,0,0),-1);
+		//HACK: rather change whole system
+		z = -z;
 
-		}
+		if (z<0.03) continue;
+
+
+		float z_max = 0.5;
+
+		cv::Scalar col(z/z_max*180,255,255);
+
+		cv::circle(img, cv::Point(x,y), 2, col,-1);
 
 	}
+
+	cv::cvtColor(img,img,CV_HSV2BGR);
+
 
 }
 
