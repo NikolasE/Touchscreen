@@ -14,12 +14,24 @@ use it like a monitor with multitouch input.
 
 How to use:
 (! Still work in progress and therefore unstable !)
-
+// currently not compiled:
 - Use projector are secondary monitor (place it virtually right of your monitor, maybe adapt const CvSize C_proj_size in main.cpp l. 64)
 - direct the monitor on a flat surface
 - point the kinect at the same surface
 - Start the application
 - Click on the "view" image. The clicked point will turn red on the surface
+
+// current state:
+- Use projector are secondary monitor (place it virtually right of your monitor, maybe adapt const CvSize C_proj_size in main.cpp l. 64)
+- direct the monitor on a flat surface
+- point the kinect at the same surface
+- Start the application
+- press any key (not a) to get a new view of the checkerboard, the first image will be used to define the table-plane and
+  to compute the Homogeneous between table and projector. For the other views, take a large cardboard so that the checkerboard
+  is transformed.
+- if you have collected enough images, press 'a' to compute the projectionmatrix of the projector. 
+
+
 
 
 https://entropia.de/GPN12:Kinect-Touchpad
