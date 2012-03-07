@@ -7,7 +7,7 @@
 
 #include "calibration.h"
 
-void scalePixels(const vector<CvPoint2D32f>& pxs, cv::Mat& T, vector<CvPoint2D32f>& transformed){
+void scalePixels(const vector<cv::Point2f>& pxs, cv::Mat& T, vector<cv::Point2f>& transformed){
 
 	uint c_cnt = pxs.size();
 
@@ -24,7 +24,7 @@ void scalePixels(const vector<CvPoint2D32f>& pxs, cv::Mat& T, vector<CvPoint2D32
 		d += sqrt(pow(px.x-mu[0],2)+pow(px.y-mu[1],2));
 	}
 	d /= c_cnt;
-//	ROS_INFO("2d: mean: %f %f, dist: %f", mu[0], mu[1], d);
+	//	ROS_INFO("2d: mean: %f %f, dist: %f", mu[0], mu[1], d);
 
 	// mean distance should be sqrt(2)
 	double s = sqrt(2)/d;
@@ -80,7 +80,7 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
 		d += sqrt(pow(p.x-mu[0],2)+pow(p.y-mu[1],2)+pow(p.z-mu[2],2));
 	}
 	d /= c_cnt;
-//	ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
+	//	ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
 
 	// mean distance should be sqrt(3)
 	double s = sqrt(3)/d;
@@ -120,7 +120,7 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
 }
 
 
-void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPoint2D32f>& projector_corners){
+void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<cv::Point2f>& projector_corners){
 
 	uint c_cnt = corners.points.size();
 	uint proj_cnt = projector_corners.size();
@@ -135,7 +135,7 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPo
 
 
 	Cloud trafoed_corners;
-	vector<CvPoint2D32f> trafoed_px;
+	vector<cv::Point2f> trafoed_px;
 	cv::Mat U,T;
 
 	scaleCloud(corners, U, trafoed_corners);
@@ -143,8 +143,6 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPo
 
 	cv::Mat A = cv::Mat(2*c_cnt,12,CV_32FC1);
 	A.setTo(0);
-
-
 
 	// p_ cross H*p = 0
 	for (uint i=0; i<c_cnt; ++i){
@@ -172,26 +170,26 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPo
 	}
 
 
-//	cout << "Tinv " << T.inv() << endl;
-//	cout << "U " << U << endl;
+	//	cout << "Tinv " << T.inv() << endl;
+	//	cout << "U " << U << endl;
 
 
 	// undo scaling
 	P = T.inv()*P*U;
 
 
-//	cout << "P " <<  P << endl;
+	//	cout << "P " <<  P << endl;
 
 
 	// compute reprojection error:
-		double total = 0;
+	double total = 0;
 
 	cv::Mat P4 = cv::Mat(4,1,CV_32FC1);
 	cv::Mat P3 = cv::Mat(3,1,CV_32FC1);
 
 
 	for (uint i=0; i<c_cnt; ++i){
-//		ROS_INFO("projection %i", i);
+		//		ROS_INFO("projection %i", i);
 
 		pcl_Point		p = corners.points.at(i);
 		cv::Point2f p_ = projector_corners.at(i%proj_cnt);
@@ -201,13 +199,13 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPo
 		P4.at<float>(2,0) = p.z;
 		P4.at<float>(3,0) = 1;
 
-//		cout << "P4 " <<  P4 << endl;
+		//		cout << "P4 " <<  P4 << endl;
 		P3 = P*P4;
 		P3 /= P3.at<float>(2);
-//		cout << "projected: " << P3 << endl;
-//
-//		cout << "pixel: " << p_.x << " " << p_.y << endl;
-//		cout << endl;
+		//		cout << "projected: " << P3 << endl;
+		//
+		//		cout << "pixel: " << p_.x << " " << p_.y << endl;
+		//		cout << endl;
 
 
 		total += sqrt(pow(P3.at<float>(0)-p_.x,2)+pow(P3.at<float>(1)-p_.y,2));
@@ -221,26 +219,24 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<CvPo
 }
 
 
-void applyHomography(const CvPoint2D32f& p,const CvMat* H, CvPoint& p_){
+void applyHomography(const cv::Point2f& p,const cv::Mat& H, CvPoint& p_){
 
-	CvMat* pc = cvCreateMat(3,1,CV_32FC1);
-	cvSet1D(pc,0,cvScalarAll(p.x));
-	cvSet1D(pc,1,cvScalarAll(p.y));
-	cvSet1D(pc,2,cvScalarAll(1));
+	cv::Mat pc (3,1,CV_32FC1);
+	pc.at<float>(0) = p.x;
+	pc.at<float>(1) = p.y;
+	pc.at<float>(2) = 1;
 
-	CvMat* p_proj = cvCreateMat(3,1,CV_32FC1);
+	cv::Mat p_proj(3,1,CV_32FC1);
 
-	cvMatMul(H, pc,p_proj);
+	p_proj = H*pc;
 
-	p_.x = cvGet1D(p_proj,0).val[0];
-	p_.y = cvGet1D(p_proj,1).val[0];
+	p_.x = p_proj.at<float>(0);
+	p_.y = p_proj.at<float>(1);
 }
 
 
-void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corners_3d, CvMat* H){
+void computeHomography(const vector<cv::Point2f>& corners_2d, const Cloud& corners_3d, cv::Mat& H){
 
-
-	assert(H &&  H->cols == 3);
 
 	uint N = corners_3d.points.size();
 	assert(N == corners_2d.size());
@@ -252,15 +248,29 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 
 
 	// create Matrices
-	CvMat* src = cvCreateMat(2,N,CV_32FC1);
-	CvMat* dst = cvCreateMat(2,N,CV_32FC1);
+	//	cv::Mat src(2,N,CV_32FC1);
+	//	cv::Mat dst(2,N,CV_32FC1);
+
+	vector<cv::Point2f> src; src.reserve(N);
 
 	for (uint i=0; i<N; ++i){
-		cvSet2D(src,0,i,cvScalarAll(corners_3d.at(i).x));
-		cvSet2D(src,1,i,cvScalarAll(corners_3d.at(i).y));
+		//		src.at<float>(0,i) = corners_3d.at(i).x;
+		//		src.at<float>(1,i) = corners_3d.at(i).y;
 
-		cvSet2D(dst,0,i,cvScalarAll(corners_2d.at(i).x));
-		cvSet2D(dst,1,i,cvScalarAll(corners_2d.at(i).y));
+		cv::Point2f p;
+		p.x = corners_3d.at(i).x;
+		p.y = corners_3d.at(i).y;
+
+		src.push_back(p);
+
+		//		dst.at<float>(0,i) = corners_2d.at(i).x;
+		//		dst.at<float>(1,i) = corners_2d.at(i).y;
+
+		//		cvSet2D(src,0,i,cvScalarAll(corners_3d.at(i).x));
+		//		cvSet2D(src,1,i,cvScalarAll(corners_3d.at(i).y));
+		//
+		//		cvSet2D(dst,0,i,cvScalarAll(corners_2d.at(i).x));
+		//		cvSet2D(dst,1,i,cvScalarAll(corners_2d.at(i).y));
 
 		//		printf("from %f %f to %f %f \n", corners_3d.at(i).x,corners_3d.at(i).y,corners_2d.at(i).x,corners_2d.at(i).y);
 
@@ -268,21 +278,23 @@ void computeHomography(const vector<CvPoint2D32f>& corners_2d, const Cloud& corn
 
 	// 2d = H*3d H*(x,y,1)
 
-	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
+	H = cv::findHomography(src,corners_2d);
+
+	//	cvFindHomography(src, dst, H, 0); // use default mode with no outlier handling
 
 
 }
 
 
 
-void drawCheckerboard(IplImage* img, const IplImage* mask, CvSize size, vector<CvPoint2D32f>& corners_2d){
+void drawCheckerboard(cv::Mat* img, const cv::Mat* mask, cv::Size size, vector<cv::Point2f>& corners_2d){
 
 	// get region of checkerboard
 	float minx,maxx, miny, maxy;
 	minx = miny = 1e5; maxx = maxy = -1e5;
-	for (int i=0; i<mask->width; ++i)
-		for (int j=0; j<mask->height; ++j){
-			if (cvGet2D(mask,j,i).val[0] == 0) continue;
+	for (int i=0; i<mask->cols; ++i)
+		for (int j=0; j<mask->rows; ++j){
+			if (mask->at<uchar>(j,i) == 0) continue;
 			minx = min(minx,i*1.f); miny = min(miny,j*1.f);
 			maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
 		}
@@ -302,8 +314,7 @@ void drawCheckerboard(IplImage* img, const IplImage* mask, CvSize size, vector<C
 
 
 
-
-	cvSet(img, cvScalarAll(255)); // all white
+	img->setTo(255); // all white
 
 	minx += border;
 	miny += border;
@@ -312,22 +323,22 @@ void drawCheckerboard(IplImage* img, const IplImage* mask, CvSize size, vector<C
 	for (int j = 0; j<=size.height; j++)
 		for (int i = (j%2); i<size.width+1; i+=2){
 
-			CvPoint lu = cvPoint(minx+i*width,miny+j*height);
-			CvPoint rl = cvPoint(minx+(i+1)*width,miny+(j+1)*height);
-			cvRectangle(img, lu, rl ,cvScalarAll(0), -1);
+			cv::Point2f lu = cv::Point2f(minx+i*width,miny+j*height);
+			cv::Point2f rl = cv::Point2f(minx+(i+1)*width,miny+(j+1)*height);
+			cv::rectangle(*img, lu, rl ,cv::Scalar::all(0), -1);
 
 
-			CvPoint ru = cvPoint(rl.x,lu.y);
+			cv::Point2f ru = cvPoint(rl.x,lu.y);
 
 			if (j==0) continue;
 
 			if (i>0){
-				corners_2d.push_back(cvPoint2D32f(lu.x, lu.y));
+				corners_2d.push_back(cv::Point2f(lu.x, lu.y));
 				//				cvCircle(img, cvPoint(lu.x, lu.y),20, CV_RGB(255,0,0),3);
 			}
 
 			if (i<size.width){
-				corners_2d.push_back(cvPoint2D32f(ru.x, ru.y));
+				corners_2d.push_back(cv::Point2f(ru.x, ru.y));
 				//				cvCircle(img, cvPoint(ru.x, ru.y),20, CV_RGB(255,0,0),3);
 			}
 

@@ -12,7 +12,11 @@
 #include "calibration.h"
 
 
-void detectCircles(IplImage* col);
+//void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat )
+
+
+
+
 
 
 

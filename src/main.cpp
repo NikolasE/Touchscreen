@@ -34,6 +34,7 @@
 #include "cloud_processing.h"
 #include "calibration.h"
 #include "user_input.h"
+#include "misc.h"
 
 ros::Publisher pub;
 
@@ -45,20 +46,21 @@ using namespace message_filters;
 
 enum Calib_state  {GET_HOMOGRAPHY,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_SETUP};
 
-Calib_state prog_state = GET_HOMOGRAPHY;
+Calib_state prog_state;
 
 
 cv::Mat proj_Matrix;
+cv::Mat proj_Hom;
 
 int cnt=0;
 vector<CvPoint> mask_points;
 
 Cloud full_cloud_moved;
 
-CvMat* proj_Hom = cvCreateMat(3,3,CV_32FC1);
+
 IplImage* col;
 
-const CvSize C_checkboard_size = cvSize(6,4);
+const cv::Size C_checkboard_size = cv::Size(6,4);
 IplImage *mask_image;
 bool depth_mask_valid;
 
@@ -69,11 +71,12 @@ bool kinect_trafo_valid = false;
 
 // region of the projector image where the checkerboard will be drawn
 IplImage* board_mask = NULL;
-IplImage* projector_image = NULL;
+cv::Mat projector_image;
+
 const CvSize C_proj_size = cvSize(1280,1024);
 //const CvSize C_proj_size = cvSize(640,480);
 
-vector<CvPoint2D32f> projector_corners; // position of internal corners on the projector image
+vector<cv::Point2f> projector_corners; // position of internal corners on the projector image
 
 
 // coordinate system in plane
@@ -109,9 +112,9 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 	CvPoint proj;
 	applyHomography(cvPoint2D32f(p.x,p.y),proj_Hom,proj);
 
-	cvCircle(projector_image, proj,20, CV_RGB(255,0,0),-1);
+	cv::circle(projector_image, proj,20, CV_RGB(255,0,0),-1);
 
-	cvShowImage("board", projector_image);
+	cv::imshow("board", projector_image);
 
 }
 
@@ -247,11 +250,16 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		//			for (uint j=0; j<3; ++j){
 		//				cout << cvmGet(proj_Hom,i,j) << " "; }
 		//			cout << endl; 	}
-		ROS_INFO("Computed Homography");
+
+		ROS_INFO("Saved homography to data/Homography.yml");
+		cv::FileStorage fs("data/Homography.yml", cv::FileStorage::WRITE);
+		fs << "Homography" << proj_Hom;
+
+		saveMatrix(kinect_trafo, "data/kinect_trafo.txt");
+		ROS_INFO("Saved kinect_trafo to data/kinect_trafo.txt");
 
 		prog_state = COLLECT_PATTERNS;
 
-		// TODO: Save Homography
 	}
 
 
@@ -287,8 +295,22 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 		assert(fs.isOpened());
 		fs << "ProjectionMatrix" << proj_Matrix;
 		fs.release();
+	}
+
+
+	if (prog_state == EVERYTHING_SETUP){
+		pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
+
+		// project cloud into image:
+
+
+
+
+
 
 	}
+
+
 
 
 
@@ -366,30 +388,30 @@ int main(int argc, char ** argv)
 	cvNamedWindow("camera", 1);
 	//	cvNamedWindow("mask",1);
 
+	cv::namedWindow("board");
+
 	// load projector mask and show fullscreen on secondary screen:
-	IplImage* board_mask = cvLoadImage("data/proj_mask.png",0);
-	if (!board_mask){
+	cv::Mat board_mask = cv::imread("data/proj_mask.png",0);
+
+	if (!board_mask.data){
 		board_mask = cvCreateImage(C_proj_size, IPL_DEPTH_8U,1);
-		cvSet(board_mask, cvScalarAll(255));
+		board_mask.setTo(255);
 		ROS_INFO("Found no projector mask, using total area");
 	}
-	if (board_mask->width !=  C_proj_size.width){
+	if (board_mask.cols !=  C_proj_size.width){
 		ROS_ERROR("mask for projector image has not the same size as the projector screen!!");
 	}
 	// draw board on image and store position of internal corners
-	projector_image = cvCreateImage(C_proj_size, IPL_DEPTH_32F, 3);
-	drawCheckerboard(projector_image, board_mask, C_checkboard_size,projector_corners);
+	projector_image = cv::Mat(C_proj_size, CV_8UC3);
+	drawCheckerboard(&projector_image, &board_mask, C_checkboard_size,projector_corners);
 
-	cvNamedWindow("board", 0);
+	cv::namedWindow("board", 0);
 	cvMoveWindow("board", 1500, 100); // assuming secondary monitor is right of primary
-	cvSetWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
-	cvShowImage("board", projector_image);
-
-
+	cv::setWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+	cv::imshow("board", projector_image);
 
 
 	pub = nh.advertise<Cloud>("projected", 1);
-
 
 
 	// check if depth-mask exists:
@@ -408,10 +430,31 @@ int main(int argc, char ** argv)
 		ROS_INFO("depth-mask was loaded from data/mask.png");
 	}
 
+	prog_state = GET_HOMOGRAPHY;
+
+	// read kinect_trafo
+	kinect_trafo_valid = loadMatrix(kinect_trafo,"data/kinect_trafo.txt");
+
+	if (kinect_trafo_valid)
+		ROS_INFO("found kinect_trafo");
+
+
+	// and Homography
+	cv::FileStorage fs("data/Homography.yml", cv::FileStorage::READ);
+	fs["Homography"] >> proj_Hom;
+
+
+	// look for Projection matrix:
+	cv::FileStorage fs2("data/projection_matrix.yml", cv::FileStorage::READ);
+	fs2["ProjectionMatrix"] >> proj_Matrix;
+
+	if (kinect_trafo_valid && proj_Hom.cols > 0 && proj_Matrix.cols > 0){
+		ROS_INFO("Loaded everything from file");
+		prog_state = EVERYTHING_SETUP;
+	}
 
 
 	cvStartWindowThread();
-
 
 	typedef sync_policies::ApproximateTime<Image, PointCloud2> policy;
 	message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 5);
@@ -420,15 +463,9 @@ int main(int argc, char ** argv)
 	sync.registerCallback(boost::bind(&callback, _1, _2));
 
 
-
-
 	ros::spin();
-
 	cvDestroyWindow("camera");
-
 	return 0;
-
-
 
 }
 
