@@ -25,7 +25,10 @@ void drawCheckerboard(cv::Mat* img,const cv::Mat* mask, cv::Size size, vector<cv
 
 
 // p_ = H*p
-void applyHomography(const cv::Point2f& p,const cv::Mat& H, CvPoint& p_);
+void applyHomography(const cv::Point2f& p,const cv::Mat& H, cv::Point2f& p_);
+
+void applyPerspectiveTrafo(const cv::Point3f& p,const cv::Mat& P, cv::Point2f& p_);
+
 
 
 void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed);

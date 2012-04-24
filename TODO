@@ -9,5 +9,5 @@ computation of Projectionmatrix via cv::SVD
 
 see imgs!
 
-
+Write launch-file to automatically launch the openni-node!
 

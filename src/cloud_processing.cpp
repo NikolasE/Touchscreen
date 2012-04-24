@@ -28,24 +28,33 @@ void applyMask(const Cloud& orig, Cloud& masked, const IplImage* mask){
 
 
 // fit plane to cloud, returns percentage of inliers
-float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients){
+float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients, std::vector<int>* inliers){
+
+  ROS_INFO("Fitting plane to cloud with %zu points", cloud.size());
+
 	// http://pointclouds.org/documentation/tutorials/random_sample_consensus.php#random-sample-consensus
 	pcl::SampleConsensusModelPlane<pcl_Point>::Ptr
 	model_p (new pcl::SampleConsensusModelPlane<pcl_Point> (cloud.makeShared()));
 
-	float max_dist_m = 0.01;
+	float max_dist_m = 0.005;
 
-	std::vector<int> inliers;
-	pcl::RandomSampleConsensus<pcl_Point> ransac (model_p);
+	std::vector<int> inliers_;
+
+	pcl::RandomSampleConsensus<pcl_Point> ransac(model_p);
 	ransac.setDistanceThreshold(max_dist_m);
 	ransac.computeModel();
-	ransac.getInliers(inliers);
+
+	ransac.getInliers(inliers_);
 
 	Eigen::VectorXf c;
 	ransac.getModelCoefficients(c);
 	coefficients = c;
 
-	float inlier_pct = inliers.size()*100.0/cloud.points.size();
+	float inlier_pct = 1;//inliers_->size()*100.0/cloud.size();
+
+
+//	if (inliers)
+//	 inliers->assign(inliers_.begin(), inliers_.end());
 
 	if (inlier_pct<0.5){ ROS_WARN("Only %.3f %%  inlier in fitPlaneToCloud!", inlier_pct); }
 	return inlier_pct;

@@ -16,9 +16,12 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/sac_model_plane.h>
+#include <pcl_ros/point_cloud.h>
 
 #include <opencv/cv.h>
 
+typedef pcl::Normal Normals;
+typedef pcl::PointXYZRGBNormal PointTypeNormal;
 typedef pcl::PointXYZRGB pcl_Point;
 typedef pcl::PointCloud<pcl_Point> Cloud;
 typedef Eigen::Vector3f Vector3f;
@@ -30,7 +33,7 @@ using namespace std;
 
 void applyMask(const Cloud& orig, Cloud& masked, const IplImage* mask);
 
-float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients);
+float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients, std::vector<int>* inliers= NULL);
 
 
 // returns false if not all points have a depth
