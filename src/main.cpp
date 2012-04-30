@@ -478,17 +478,23 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   fitPlaneToCloud(filtered, plane_model);
 
   // project the detected corners to the plane
-  Cloud projected;
-  bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
-  if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
-
-
+//  Cloud projected;
+//  bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
+//  if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
 
   int m = (C_checkboard_size.height/2*C_checkboard_size.width)+(C_checkboard_size.width-1)/2;
 
   pcl_Point p  = cloud.at(corners[m].x, corners[m].y);
-  pcl_Point p2 = cloud.at(corners[m].x, corners[m].y-50);
+  pcl_Point p2 = cloud.at(corners[m].x+sin(-kinect_tilt_angle_deg/180*M_PI)*100, corners[m].y-cos(-kinect_tilt_angle_deg/180*M_PI)*100);
 
+//ROS_INFO("mitte: %f %f",cloud.at(corners[m].x, cloud.at(corners[m].y );
+//ROS_INFO("d: ")
+
+
+  if ( p2.x != p2.x){
+   ROS_WARN("NAN in pointcloud, no calculation of new wall-system");
+   return;
+  }
 
   ROS_INFO("a center: %f %f %f", p.x,p.y,p.z);
   ROS_INFO("a above: %f %f %f", p2.x-p.x,p2.y-p.y,p2.z-p.z);
@@ -742,10 +748,10 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
  // ROS_INFO("got imu: x: %f, phi: %f", imu_ptr->linear_acceleration.x, asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180);
 // ROS_INFO("x,y,z: %f %f %f", imu_ptr->linear_acceleration.x,imu_ptr->linear_acceleration.y,imu_ptr->linear_acceleration.z);
 
- if (!kinect_tilt_angle_valid)
+ //if (!kinect_tilt_angle_valid)
  {
   kinect_tilt_angle_deg = asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180;
-  ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
+ // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
   kinect_tilt_angle_valid = true;
  }
 
