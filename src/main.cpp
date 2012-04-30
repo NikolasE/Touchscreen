@@ -16,7 +16,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <pcl_ros/point_cloud.h>
 #include <message_filters/time_synchronizer.h>
-
+#include <tf/transform_broadcaster.h>
 #include <pcl/io/pcd_io.h>
 
 #include <message_filters/subscriber.h>
@@ -25,7 +25,9 @@
 #include <sensor_msgs/Image.h>
 
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/Imu.h>
 
+#include <pcl_ros/transforms.h>
 #include <pcl/ros/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -74,6 +76,11 @@ bool kinect_trafo_valid = false;
 // region of the projector image where the checkerboard will be drawn
 IplImage* board_mask = NULL;
 cv::Mat projector_image;
+
+float kinect_tilt_angle_deg = 0;
+bool kinect_tilt_angle_valid = false;
+
+ros::Subscriber sub_imu;
 
 const CvSize C_proj_size = cvSize(1152,864);
 //const CvSize C_proj_size = cvSize(640,480);
@@ -342,10 +349,29 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
- // cout << "callback" << endl;
+ if (!kinect_tilt_angle_valid){
+  ROS_INFO("waiting for tilt angle!");
+  return;
+ }
+
 
  Cloud cloud;
  pcl::fromROSMsg(*cloud_ptr, cloud);
+
+
+
+// Cloud out;
+// pcl_ros::transformPointCloud(cloud, out, transform);
+//
+// Cloud::Ptr msg = out.makeShared();
+// msg->header.frame_id = "/openni_rgb_optical_frame";
+// msg->header.stamp = ros::Time::now ();
+// pub_full_moved.publish(msg);
+// // pub_full_moved.publish(out);
+
+
+ // cout << "callback" << endl;
+
 
  // cout << cloud_ptr->header.frame_id << endl;
 
@@ -456,7 +482,35 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
   if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
 
-  defineAxis(projected, pl_center, pl_upwards, pl_right);
+
+
+  int m = (C_checkboard_size.height/2*C_checkboard_size.width)+(C_checkboard_size.width-1)/2;
+
+  pcl_Point p  = cloud.at(corners[m].x, corners[m].y);
+  pcl_Point p2 = cloud.at(corners[m].x, corners[m].y-50);
+
+
+  ROS_INFO("a center: %f %f %f", p.x,p.y,p.z);
+  ROS_INFO("a above: %f %f %f", p2.x-p.x,p2.y-p.y,p2.z-p.z);
+
+
+//  Vector3f pl_center  = projected.at((projected.width-1)/2, projected.height/2);
+//
+//  cv::Point2f up_pixel = corners.at((projected.width-1)/2, projected.height/2));
+//  up_pixel.x -= 50;
+//
+//  pcl_Point up = cloud.at(up_pixel.x, up_pixel.y);
+//
+//  pl_upwards.x() = up.x - pl_center.x;
+//  pl_upwards.y() = up.y-pl_center.y;
+//  pl_upwards.z() = up.z-pl_center.z;
+
+
+  pl_center = Eigen::Vector3f(p.x,p.y,p.z);
+  pl_upwards = Eigen::Vector3f(p2.x-p.x,p2.y-p.y,p2.z-p.z);
+
+
+  // defineAxis(projected, pl_center, pl_upwards, pl_right);
 
   // TODO:
   // use kinect as definition for horizontal line
@@ -472,6 +526,44 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
   pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
+
+//  pcl::getTransformedPointCloud(cloud,kinect_trafo,cloud);
+//
+//  // ROS_INFO("sending on projected (%zu points)", filtered.size());
+//
+//ROS_INFO("cloud: %i %i", cloud.width, cloud.height);
+//  pcl_Point middle = cloud.at(cloud.width, cloud.height/2);
+//  pcl_Point up = cloud.at(cloud.width, 0);
+//
+//  Vector3f up_(up.x-middle.x,up.x-middle.y,up.x-middle.z);
+//
+//  ROS_INFO("middle: %f %f %f", middle.x,middle.y,middle.z);
+//  ROS_INFO("up: %f %f %f", up.x,up.y,up.z);
+//
+//  ROS_INFO("new up: %f %f %f", up_.x(),up_.y(), up_.z());
+
+
+  Cloud::Ptr msg = cloud.makeShared();
+  msg->header.frame_id = "/openni_rgb_optical_frame";
+  msg->header.stamp = ros::Time::now ();
+  pub.publish(msg);
+
+//  tf::Transform transform;
+//  transform.setOrigin( tf::Vector3(0,0,0) );
+//  transform.setRotation( tf::Quaternion(-kinect_tilt_angle_deg/180*M_PI, 0,0) );
+//
+//  ROS_INFO("Quatenion: %f %f %f %f", transform.getRotation().x(),transform.getRotation().y(),transform.getRotation().z(),transform.getRotation().w());
+//
+//
+//  Eigen::Matrix4f rot;
+//
+//  pcl_ros::transformAsMatrix(transform, rot);
+//
+//  Eigen::Affine3f rot_affine(rot);
+//
+//  kinect_trafo = rot_affine*kinect_trafo;
+
+
 
 
 //  saveMatrix(kinect_trafo,"data/kinect_trafo.txt");
@@ -572,7 +664,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   //		cout << "sending cloud" << endl;
   Cloud filtered;
 
-  //  applyMask(cloud, filtered,mask_image);
+    applyMask(cloud, filtered,mask_image);
   pcl::getTransformedPointCloud(cloud,kinect_trafo,filtered);
 
   // ROS_INFO("sending on projected (%zu points)", filtered.size());
@@ -646,7 +738,18 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 }
 
+void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
+ // ROS_INFO("got imu: x: %f, phi: %f", imu_ptr->linear_acceleration.x, asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180);
+// ROS_INFO("x,y,z: %f %f %f", imu_ptr->linear_acceleration.x,imu_ptr->linear_acceleration.y,imu_ptr->linear_acceleration.z);
 
+ if (!kinect_tilt_angle_valid)
+ {
+  kinect_tilt_angle_deg = asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180;
+  ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
+  kinect_tilt_angle_valid = true;
+ }
+
+}
 
 int main(int argc, char ** argv)
 {
@@ -744,6 +847,7 @@ int main(int argc, char ** argv)
  mv = new Mesh_visualizer();
  rect_finder = new Rect_finder();
 
+ sub_imu = nh.subscribe("/imu", 10, imu_CB);
 
  cvStartWindowThread();
 

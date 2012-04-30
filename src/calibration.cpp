@@ -620,7 +620,7 @@ void drawCheckerboard(cv::Mat* img, const cv::Mat* mask, cv::Size size, vector<c
  minx += border;
  miny += border;
 
- ROS_INFO("GRID: W: %f, H: %f", width, height);
+ // ROS_INFO("GRID: W: %f, H: %f", width, height);
 
  // start with black square
  for (int j = 0; j<=size.height; j++)

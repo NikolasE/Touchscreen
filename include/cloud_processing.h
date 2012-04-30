@@ -40,7 +40,7 @@ float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f &coefficients, std::ve
 bool projectToPlane(const CvPoint2D32f* pts, CvSize size, const Cloud& full_cloud, const Eigen::Vector4f &coefficients, Cloud& projected);
 
 
-void defineAxis(const Cloud& corners,  Eigen::Vector3f& center, Eigen::Vector3f& upwards, Eigen::Vector3f& right);
+void defineAxis(const Cloud& corners,  Eigen::Vector3f& center, Eigen::Vector3f& upwards, Eigen::Vector3f& right, float* kinect_tilt_angle = NULL);
 
 void transformInPlaneCoordinates(const Cloud& corners, vector<Vector2f>& coords, const Vector3f& center, const Vector3f& upwards , const Vector3f& right);
 

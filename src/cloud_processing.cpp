@@ -93,9 +93,9 @@ bool projectToPlane(const CvPoint2D32f* pts, CvSize size, const Cloud& full_clou
 }
 
 
-void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& upwards, Eigen::Vector3f& right){
+void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& upwards, Eigen::Vector3f& right, float* kinect_tilt_angle){
 
-	int w_c = (corners.width-1)/2;
+	 int w_c = (corners.width-1)/2;
 
 	pcl_Point c  = corners.at(w_c, corners.height/2);
 	pcl_Point up = corners.points[w_c];
@@ -106,7 +106,8 @@ void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& 
 	upwards = Eigen::Vector3f(up.x,up.y,up.z)-center;
 	right = Eigen::Vector3f(r.x,r.y,r.z)-center;
 
-	ROS_INFO("right: %f %f %f", right.x(), right.y(), right.z());
+	ROS_INFO("upwards: %f %f %f", upwards.x(), upwards.y(), upwards.z());
+	ROS_INFO("center: %f %f %f", center.x(), center.y(), center.z());
 
 
 	upwards.normalize();
