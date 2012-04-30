@@ -58,11 +58,11 @@ int cnt=0;
 vector<CvPoint> mask_points;
 
 Cloud full_cloud_moved;
-
+Eigen::Vector4f plane_model;
 
 IplImage* col;
 
-const cv::Size C_checkboard_size = cv::Size(7,5);
+const cv::Size C_checkboard_size = cv::Size(8,6);
 IplImage *mask_image;
 bool depth_mask_valid;
 
@@ -75,7 +75,7 @@ bool kinect_trafo_valid = false;
 IplImage* board_mask = NULL;
 cv::Mat projector_image;
 
-const CvSize C_proj_size = cvSize(1024,768);
+const CvSize C_proj_size = cvSize(1152,864);
 //const CvSize C_proj_size = cvSize(640,480);
 
 vector<cv::Point2f> projector_corners; // position of internal corners on the projector image
@@ -170,7 +170,6 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 
 
  if (proj_Matrix.rows == 0) return;
-
  if (event != CV_EVENT_LBUTTONUP) return;
 
  Cloud* cloud = (Cloud*)param;
@@ -184,10 +183,131 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
  cv::Point2f proj;
  applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_Matrix,proj);
 
+ // ROS_INFO("PX: %i %i", x,y);
+ // ROS_INFO("3d: %f %f %f", p.x,p.y,p.z);
+ // ROS_INFO("projected: %f %f", proj.x, proj.y);
+
  cv::circle(projector_image, proj,20, CV_RGB(255,0,0),-1);
- cv::imshow("board", projector_image);
+ IplImage img_ipl = projector_image;
+ cvShowImage("fullscreen_ipl", &img_ipl);
 
 }
+
+
+void showImageZone(const Cloud& full_moved){
+
+
+
+ if (proj_Matrix.rows == 0) return;
+
+// ROS_INFO("show image zone");
+
+ projector_image.setTo(0);
+
+
+ // load testimage:
+ cv::Mat test_img = cv::imread("/usr/gast/engelhan/ros/Touchscreen/imgs/Testbild.png");
+ int width_px = test_img.cols;
+ int height_px = test_img.rows;
+
+// ROS_INFO("test image: %i %i", width_px, height_px);
+
+ // create rect according to coordinate system and draw it
+ float width = 0.4;
+ float height = width*height_px/width_px; // use ratio of input-image
+
+ float off_x = 0;
+ float off_y = 0;
+
+ vector<Eigen::Vector3f> d3;
+
+ d3.push_back(Eigen::Vector3f(-width,-height,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f( width,-height,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f( width, height,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f(-width, height,0)+Eigen::Vector3f(off_x, off_y, 0));
+
+// vector<cv::Point2f> proj_vec;
+// cv::Point2f proj;
+// for (uint i=0; i<d3.size(); ++i){
+//  applyPerspectiveTrafo(cv::Point3f(d3[i].x(),d3[i].y(),d3[i].z()),proj_Matrix,proj);
+//
+//  ROS_INFO("rect: %f %f %f", d3[i].x(),d3[i].y(),d3[i].z());
+//  //  ROS_INFO("px: %f %f", proj_vec[i].x, proj_vec[i].y);
+//
+//  proj_vec.push_back(proj);
+// }
+//
+// for (uint i=0; i< proj_vec.size()-1; ++i){
+//  cv::line(projector_image,proj_vec[i], proj_vec[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
+// }
+//
+// cv::circle(projector_image, proj_vec[0], 20, CV_RGB(0,0,255),3);
+
+ // TODO
+// drawImageinRect(proj_Matrix, d3,projector_image);
+ // TODO: image region should have same width/height-ratio as image
+ // projectProjectorIntoImage(proj_Matrix, plane_model, d3, projector_image);
+
+ cv::Mat mask = projector_image.clone();
+ mask.setTo(0);
+
+ vector<cv::Point> proj_vec;
+ vector<cv::Point2f> proj_vecf;
+ for (uint i=0; i<d3.size(); ++i){
+  cv::Point2f proj;
+  applyPerspectiveTrafo(cv::Point3f(d3[i].x(),d3[i].y(),d3[i].z()),proj_Matrix,proj);
+  proj_vec.push_back(cv::Point(proj.x, proj.y));
+  proj_vecf.push_back(proj);
+ }
+
+// cv::fillConvexPoly(mask, &proj_vec[0], proj_vec.size(), cv::Scalar::all(255));
+// cv::rectangle(mask, cv::Point(20,20),cv::Point(200,100), CV_RGB(0,255,0), 5);
+
+
+ vector<cv::Point2f> src;
+ src.push_back(cv::Point2f(0,0));
+ src.push_back(cv::Point2f(width_px,0));
+ src.push_back(cv::Point2f(width_px, height_px));
+ src.push_back(cv::Point2f(0, height_px));
+
+ cv::Mat trafo = cv::getPerspectiveTransform(&src[0], &proj_vecf[0]);
+
+ vector<cv::Point2f> src_trafoed;
+ cv::perspectiveTransform(src, src_trafoed, trafo);
+
+// for (uint i=0; i<4-1; ++i){
+//  ROS_INFO("source: %f %f", src[i].x, src[i].y);
+//  cv::line(mask,src[i], src[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
+//  ROS_INFO("trafoed: %f %f, goal: %f %f",src_trafoed[i].x,src_trafoed[i].y,proj_vecf[i].x,proj_vecf[i].y);
+// }
+//
+// for (uint i=0; i< proj_vec.size()-1; ++i){
+//  cv::line(mask,proj_vec[i], proj_vec[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
+// }
+//
+// cv::circle(mask, src[0], 20, CV_RGB(0,0,255),3);
+
+
+ // cout << "trafo " << trafo <<  endl;
+
+ cv::Mat rotated = mask.clone();
+
+ cv::warpPerspective(test_img, rotated, trafo, cv::Size(rotated.cols, rotated.rows), cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+
+// cv::namedWindow("warped");
+// cv::imshow("warped", test_img);
+
+ IplImage img_ipl = rotated;
+ cvShowImage("fullscreen_ipl", &img_ipl);
+
+
+//
+// IplImage img_ipl = projector_image;
+// cvShowImage("fullscreen_ipl", &img_ipl);
+
+}
+
+
 
 
 // 255 for interesting region
@@ -201,8 +321,6 @@ void createMaskFromCheckerBoardDetections(IplImage* mask,const CvPoint2D32f* pts
  cvSet(mask,cvScalarAll(0));
  int w = boardSize.width; int h = boardSize.height;
  int l = pts[1].x-pts[0].x; // length of a square
-
- ROS_INFO("C");
 
  float min_x = pts[0].x-l; 		float min_y = pts[0].y-l;
  float max_x = pts[w*h-1].x+l; float max_y = pts[w*h-1].y+l;
@@ -267,10 +385,10 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
  if (prog_state == COLLECT_PATTERNS)
-  cout << "COLLECT_PATTERNS" << endl;
+  cout << "State: COLLECT_PATTERNS" << endl;
 
  if (prog_state == GET_PROJECTION)
-  cout << "GET_PROJECTION" << endl;
+  cout << "State: GET_PROJECTION" << endl;
 
 
  CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
@@ -330,16 +448,35 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   Cloud filtered;
   applyMask(cloud, filtered,mask_image);
 
-  Eigen::Vector4f model;
-  fitPlaneToCloud(filtered, model);
+
+  fitPlaneToCloud(filtered, plane_model);
 
   // project the detected corners to the plane
   Cloud projected;
-  bool valid = projectToPlane(corners, C_checkboard_size, cloud, model, projected); // false if one corner has no depth
+  bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
   if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
 
   defineAxis(projected, pl_center, pl_upwards, pl_right);
-  pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_right,-model.head<3>(), pl_center, kinect_trafo);
+
+  // TODO:
+  // use kinect as definition for horizontal line
+  // pl_right = Eigen::Vector3f(1,0,0);
+
+  // cout << "plane: " << plane_model.head<3>() << endl;
+
+  float plane_direction = 1;
+  if (plane_model.head<3>()[2] < 0){
+   // ROS_ERROR("wrong normal direction!");
+   plane_direction  = -1;
+  }
+
+
+  pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
+
+
+//  saveMatrix(kinect_trafo,"data/kinect_trafo.txt");
+//  ROS_INFO("Wrote kinect_trafo to data/kinect_trafo.txt");
+
 
   kinect_trafo_valid = true;
   prog_state = COLLECT_PATTERNS;
@@ -369,21 +506,50 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
  if (prog_state == GET_PROJECTION){
 
-  ROS_INFO("Get projection");
+  // ROS_INFO("Get projection");
 
   computeProjectionMatrix(proj_Matrix, corners_3d, projector_corners);
   prog_state = COLLECT_PATTERNS;
 
-  //  cout << "write" << endl << proj_Matrix << endl;
-  //  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
-  //  assert(fs.isOpened());
-  //  fs << "ProjectionMatrix" << proj_Matrix;
-  //  fs.release();
+
+  cv::Mat H_cv, H_svd;
+
+ computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
+ computeHomography_SVD(projector_corners, corners_3d, H_cv);
+
+
+
+
+  // show all corners on image:
+
+  for (uint i=0; i<corners_3d.size(); ++i){
+   cv::Point2f proj;
+   applyPerspectiveTrafo(cv::Point3f(corners_3d[i].x,corners_3d[i].y,corners_3d[i].z),proj_Matrix,proj);
+
+   // ROS_INFO("PX: %i %i", x,y);
+   // ROS_INFO("3d: %f %f %f", corners_3d[i].x,corners_3d[i].y,corners_3d[i].z);
+   // ROS_INFO("projected: %f %f", proj.x, proj.y);
+
+   cv::circle(projector_image, proj,10, CV_RGB(255,0,0),2);
+
+  }
+
+
+//  IplImage img_ipl = projector_image;
+//  cvShowImage("fullscreen_ipl", &img_ipl);
+
+
+  // cout << "write" << endl << proj_Matrix << endl;
+//  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
+//  assert(fs.isOpened());
+//  fs << "ProjectionMatrix" << proj_Matrix;
+//  fs.release();
  }
 
  if (proj_Matrix.cols > 0){
   pcl::getTransformedPointCloud(cloud,kinect_trafo,full_cloud_moved);
   cvSetMouseCallback("camera",on_mouse_projector,&full_cloud_moved);
+  showImageZone(full_cloud_moved);
  }
 
 
@@ -393,8 +559,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   //		// project cloud into image:
   projectCloudIntoProjector(full_cloud_moved,proj_Matrix, projector_image);
-  cv::imshow("board", projector_image);
-  cv::setWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+  //  cv::imshow("board", projector_image);
+  //  cv::setWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
 
   //				cv::namedWindow("foo");
   //				cv::imshow("foo", projector_image);
@@ -406,8 +572,10 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   //		cout << "sending cloud" << endl;
   Cloud filtered;
 
-  applyMask(cloud, filtered,mask_image);
-  pcl::getTransformedPointCloud(filtered,kinect_trafo,filtered);
+  //  applyMask(cloud, filtered,mask_image);
+  pcl::getTransformedPointCloud(cloud,kinect_trafo,filtered);
+
+  // ROS_INFO("sending on projected (%zu points)", filtered.size());
 
   Cloud::Ptr msg = filtered.makeShared();
   msg->header.frame_id = "/openni_rgb_optical_frame";
@@ -493,7 +661,7 @@ int main(int argc, char ** argv)
  cvNamedWindow("camera", 1);
  //	cvNamedWindow("mask",1);
 
- cv::namedWindow("board");
+ // cv::namedWindow("board");
 
  // load projector mask and show fullscreen on secondary screen:
  cv::Mat board_mask = cv::imread("data/proj_mask.png",0);
@@ -510,10 +678,13 @@ int main(int argc, char ** argv)
  projector_image = cv::Mat(C_proj_size, CV_8UC3);
  drawCheckerboard(&projector_image, &board_mask, C_checkboard_size,projector_corners);
 
- cv::namedWindow("board", 0);
- cvMoveWindow("board", 1500, 100); // assuming secondary monitor is right of primary
- cv::setWindowProperty("board", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
- cv::imshow("board", projector_image);
+
+ // using old style for fullscreen image
+ cvNamedWindow("fullscreen_ipl",0);
+ cvMoveWindow("fullscreen_ipl", 2000, 100);
+ cvSetWindowProperty("fullscreen_ipl", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+ IplImage proj_ipl = projector_image;
+ cvShowImage("fullscreen_ipl", &proj_ipl);
 
 
  pub = nh.advertise<Cloud>("projected", 1);
@@ -556,6 +727,12 @@ int main(int argc, char ** argv)
  fs2["ProjectionMatrix"] >> proj_Matrix;
  if (proj_Matrix.cols > 0){
   cout << "projection" << endl << proj_Matrix << endl;
+ }
+
+ // if the projection matrix was deleted, also reestimate the kinect pose
+ if (!kinect_trafo_valid && proj_Matrix.cols > 0){
+  ROS_INFO("Found kinect-trafo but no Projection matrix, reestimating kinect pose");
+  kinect_trafo_valid = false;
  }
 
  if (kinect_trafo_valid && proj_Matrix.cols > 0){

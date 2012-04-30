@@ -10,8 +10,8 @@
 
 void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat& P, cv::Mat& img){
 
-	cv::Mat p(4,1,CV_32FC1);
-	cv::Mat px(3,1,CV_32FC1);
+	cv::Mat p(4,1,CV_64FC1);
+	cv::Mat px(3,1,CV_64FC1);
 
 	int w = img.cols;
 	int h = img.rows;
@@ -21,18 +21,18 @@ void projectCloudIntoProjector(const Cloud& cloud, const cv::Mat& P, cv::Mat& im
 	float z;
 
 	for (uint i=0; i<cloud.points.size(); ++i){
-		p.at<float>(0) = cloud.points[i].x;
-		p.at<float>(1) = cloud.points[i].y;
-		p.at<float>(2) = cloud.points[i].z;
-		p.at<float>(3) = 1;
+		p.at<double>(0) = cloud.points[i].x;
+		p.at<double>(1) = cloud.points[i].y;
+		p.at<double>(2) = cloud.points[i].z;
+		p.at<double>(3) = 1;
 
 		z = cloud.points[i].z;
 
 		if (! z == z) continue;
 
 		px = P*p;
-		px /= px.at<float>(2);
-		int x = px.at<float>(0);	int y = px.at<float>(1);
+		px /= px.at<double>(2);
+		int x = px.at<double>(0);	int y = px.at<double>(1);
 		if (x<0 || x >= w || y < 0 || y >= h)
 			continue;
 

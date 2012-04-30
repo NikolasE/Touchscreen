@@ -99,11 +99,15 @@ void defineAxis(const Cloud& corners, Eigen::Vector3f& center, Eigen::Vector3f& 
 
 	pcl_Point c  = corners.at(w_c, corners.height/2);
 	pcl_Point up = corners.points[w_c];
-	pcl_Point r  = corners.at(corners.width-1, corners.height/2);
+	pcl_Point r = corners.at(corners.width-1, corners.height/2);
+
 
 	center = Eigen::Vector3f(c.x,c.y,c.z);
 	upwards = Eigen::Vector3f(up.x,up.y,up.z)-center;
 	right = Eigen::Vector3f(r.x,r.y,r.z)-center;
+
+	ROS_INFO("right: %f %f %f", right.x(), right.y(), right.z());
+
 
 	upwards.normalize();
 	right.normalize();
