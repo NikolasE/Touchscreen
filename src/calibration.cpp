@@ -180,7 +180,7 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<cv::
  P = T.inv()*P*U;
 
 
- cout << "Projection Matrix: " << endl <<  P << endl;
+// cout << "Projection Matrix: " << endl <<  P << endl;
 
 
  // compute reprojection error:
@@ -209,7 +209,7 @@ void computeProjectionMatrix(cv::Mat& P ,const Cloud& corners, const vector<cv::
 
  }
 
- ROS_INFO("mean error: %f (x: %f, y: %f)", total, total_x, total_y);
+ ROS_INFO("Projection Matrix: mean error: %f (x: %f, y: %f)", total, total_x, total_y);
 
 }
 

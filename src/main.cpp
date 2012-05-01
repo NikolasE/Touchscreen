@@ -207,7 +207,7 @@ void showImageZone(const Cloud& full_moved){
 
  if (proj_Matrix.rows == 0) return;
 
-// ROS_INFO("show image zone");
+ // ROS_INFO("show image zone");
 
  projector_image.setTo(0);
 
@@ -217,43 +217,22 @@ void showImageZone(const Cloud& full_moved){
  int width_px = test_img.cols;
  int height_px = test_img.rows;
 
-// ROS_INFO("test image: %i %i", width_px, height_px);
+ // ROS_INFO("test image: %i %i", width_px, height_px);
 
  // create rect according to coordinate system and draw it
- float width = 0.4;
+ float width = 0.8;
  float height = width*height_px/width_px; // use ratio of input-image
 
- float off_x = 0;
- float off_y = 0;
+ float off_x = -width/2;
+ float off_y = -height/2;
 
  vector<Eigen::Vector3f> d3;
 
- d3.push_back(Eigen::Vector3f(-width,-height,0)+Eigen::Vector3f(off_x, off_y, 0));
- d3.push_back(Eigen::Vector3f( width,-height,0)+Eigen::Vector3f(off_x, off_y, 0));
- d3.push_back(Eigen::Vector3f( width, height,0)+Eigen::Vector3f(off_x, off_y, 0));
- d3.push_back(Eigen::Vector3f(-width, height,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f(0,0,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f(width,0,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f(width, height,0)+Eigen::Vector3f(off_x, off_y, 0));
+ d3.push_back(Eigen::Vector3f(0, height,0)+Eigen::Vector3f(off_x, off_y, 0));
 
-// vector<cv::Point2f> proj_vec;
-// cv::Point2f proj;
-// for (uint i=0; i<d3.size(); ++i){
-//  applyPerspectiveTrafo(cv::Point3f(d3[i].x(),d3[i].y(),d3[i].z()),proj_Matrix,proj);
-//
-//  ROS_INFO("rect: %f %f %f", d3[i].x(),d3[i].y(),d3[i].z());
-//  //  ROS_INFO("px: %f %f", proj_vec[i].x, proj_vec[i].y);
-//
-//  proj_vec.push_back(proj);
-// }
-//
-// for (uint i=0; i< proj_vec.size()-1; ++i){
-//  cv::line(projector_image,proj_vec[i], proj_vec[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
-// }
-//
-// cv::circle(projector_image, proj_vec[0], 20, CV_RGB(0,0,255),3);
-
- // TODO
-// drawImageinRect(proj_Matrix, d3,projector_image);
- // TODO: image region should have same width/height-ratio as image
- // projectProjectorIntoImage(proj_Matrix, plane_model, d3, projector_image);
 
  cv::Mat mask = projector_image.clone();
  mask.setTo(0);
@@ -267,9 +246,8 @@ void showImageZone(const Cloud& full_moved){
   proj_vecf.push_back(proj);
  }
 
-// cv::fillConvexPoly(mask, &proj_vec[0], proj_vec.size(), cv::Scalar::all(255));
-// cv::rectangle(mask, cv::Point(20,20),cv::Point(200,100), CV_RGB(0,255,0), 5);
-
+ // cv::fillConvexPoly(mask, &proj_vec[0], proj_vec.size(), cv::Scalar::all(255));
+ // cv::rectangle(mask, cv::Point(20,20),cv::Point(200,100), CV_RGB(0,255,0), 5);
 
  vector<cv::Point2f> src;
  src.push_back(cv::Point2f(0,0));
@@ -277,40 +255,86 @@ void showImageZone(const Cloud& full_moved){
  src.push_back(cv::Point2f(width_px, height_px));
  src.push_back(cv::Point2f(0, height_px));
 
+ ROS_INFO("hello");
+ // compute trafo from image x to world position:
+ cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
+ px_to_world.setTo(0);
+
+ px_to_world.at<double>(3,2) = 1;
+ px_to_world.at<double>(0,0) = width/width_px;
+ px_to_world.at<double>(0,2) = off_x;
+ px_to_world.at<double>(1,1) = height/height_px; // == width/width_px
+ px_to_world.at<double>(1,2) = off_y;
+
+ cout << "px to world" << endl << px_to_world << endl;
+
+ // ths trafo should move the pixels to the corresponding 3d position:
+ for (uint i=0; i<src.size(); ++i){
+
+
+  cv::Mat P3 = cv::Mat(3,1,CV_64FC1);
+  cv::Mat P4 = cv::Mat(4,1,CV_64FC1);
+
+
+  P3.at<double>(0) = src[i].x;
+  P3.at<double>(1) = src[i].y;
+  P3.at<double>(2) = 1;
+
+  ROS_INFO("2");
+  P4 = px_to_world*P3;
+
+  Eigen::Vector3f goal = d3[i];
+
+
+  ROS_INFO("trafoed: %f %f %f, goal: %f %f %f",P4.at<double>(0),P4.at<double>(1),P4.at<double>(2), goal(0), goal(1), goal(2));
+
+
+ }
+
+
+ cv::Mat trafo_1 = proj_Matrix*px_to_world;
+ trafo_1 /= trafo_1.at<double>(2,2); // defined up to scale
+
  cv::Mat trafo = cv::getPerspectiveTransform(&src[0], &proj_vecf[0]);
+
+
 
  vector<cv::Point2f> src_trafoed;
  cv::perspectiveTransform(src, src_trafoed, trafo);
 
-// for (uint i=0; i<4-1; ++i){
-//  ROS_INFO("source: %f %f", src[i].x, src[i].y);
-//  cv::line(mask,src[i], src[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
-//  ROS_INFO("trafoed: %f %f, goal: %f %f",src_trafoed[i].x,src_trafoed[i].y,proj_vecf[i].x,proj_vecf[i].y);
-// }
-//
-// for (uint i=0; i< proj_vec.size()-1; ++i){
-//  cv::line(mask,proj_vec[i], proj_vec[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
-// }
-//
-// cv::circle(mask, src[0], 20, CV_RGB(0,0,255),3);
+ cout << "projective Trafo from projection: " << endl << trafo_1 << endl;
+
+ cout << "projective Trafo: " << endl << trafo << endl;
 
 
- // cout << "trafo " << trafo <<  endl;
+ // for (uint i=0; i<4-1; ++i){
+ //  ROS_INFO("source: %f %f", src[i].x, src[i].y);
+ //  cv::line(mask,src[i], src[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
+ //  ROS_INFO("trafoed: %f %f, goal: %f %f",src_trafoed[i].x,src_trafoed[i].y,proj_vecf[i].x,proj_vecf[i].y);
+ // }
+ //
+ // for (uint i=0; i< proj_vec.size()-1; ++i){
+ //  cv::line(mask,proj_vec[i], proj_vec[(i+1)%proj_vec.size()], CV_RGB(0,255,0), 2);
+ // }
+ //
+ // cv::circle(mask, src[0], 20, CV_RGB(0,0,255),3);
+
+
 
  cv::Mat rotated = mask.clone();
 
  cv::warpPerspective(test_img, rotated, trafo, cv::Size(rotated.cols, rotated.rows), cv::INTER_LINEAR, cv::BORDER_CONSTANT);
 
-// cv::namedWindow("warped");
-// cv::imshow("warped", test_img);
+ cv::namedWindow("warped");
+ cv::imshow("warped", rotated);
 
  IplImage img_ipl = rotated;
  cvShowImage("fullscreen_ipl", &img_ipl);
 
 
-//
-// IplImage img_ipl = projector_image;
-// cvShowImage("fullscreen_ipl", &img_ipl);
+ //
+ // IplImage img_ipl = projector_image;
+ // cvShowImage("fullscreen_ipl", &img_ipl);
 
 }
 
@@ -360,14 +384,14 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 
-// Cloud out;
-// pcl_ros::transformPointCloud(cloud, out, transform);
-//
-// Cloud::Ptr msg = out.makeShared();
-// msg->header.frame_id = "/openni_rgb_optical_frame";
-// msg->header.stamp = ros::Time::now ();
-// pub_full_moved.publish(msg);
-// // pub_full_moved.publish(out);
+ // Cloud out;
+ // pcl_ros::transformPointCloud(cloud, out, transform);
+ //
+ // Cloud::Ptr msg = out.makeShared();
+ // msg->header.frame_id = "/openni_rgb_optical_frame";
+ // msg->header.stamp = ros::Time::now ();
+ // pub_full_moved.publish(msg);
+ // // pub_full_moved.publish(out);
 
 
  // cout << "callback" << endl;
@@ -478,17 +502,17 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   fitPlaneToCloud(filtered, plane_model);
 
   // project the detected corners to the plane
-//  Cloud projected;
-//  bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
-//  if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
+  //  Cloud projected;
+  //  bool valid = projectToPlane(corners, C_checkboard_size, cloud, plane_model, projected); // false if one corner has no depth
+  //  if (!valid) {ROS_WARN("One of the corner points had no depth!"); return; }
 
   int m = (C_checkboard_size.height/2*C_checkboard_size.width)+(C_checkboard_size.width-1)/2;
 
   pcl_Point p  = cloud.at(corners[m].x, corners[m].y);
   pcl_Point p2 = cloud.at(corners[m].x+sin(-kinect_tilt_angle_deg/180*M_PI)*100, corners[m].y-cos(-kinect_tilt_angle_deg/180*M_PI)*100);
 
-//ROS_INFO("mitte: %f %f",cloud.at(corners[m].x, cloud.at(corners[m].y );
-//ROS_INFO("d: ")
+  //ROS_INFO("mitte: %f %f",cloud.at(corners[m].x, cloud.at(corners[m].y );
+  //ROS_INFO("d: ")
 
 
   if ( p2.x != p2.x){
@@ -496,20 +520,20 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
    return;
   }
 
-  ROS_INFO("a center: %f %f %f", p.x,p.y,p.z);
-  ROS_INFO("a above: %f %f %f", p2.x-p.x,p2.y-p.y,p2.z-p.z);
+  //  ROS_INFO("a center: %f %f %f", p.x,p.y,p.z);
+  //  ROS_INFO("a above: %f %f %f", p2.x-p.x,p2.y-p.y,p2.z-p.z);
 
 
-//  Vector3f pl_center  = projected.at((projected.width-1)/2, projected.height/2);
-//
-//  cv::Point2f up_pixel = corners.at((projected.width-1)/2, projected.height/2));
-//  up_pixel.x -= 50;
-//
-//  pcl_Point up = cloud.at(up_pixel.x, up_pixel.y);
-//
-//  pl_upwards.x() = up.x - pl_center.x;
-//  pl_upwards.y() = up.y-pl_center.y;
-//  pl_upwards.z() = up.z-pl_center.z;
+  //  Vector3f pl_center  = projected.at((projected.width-1)/2, projected.height/2);
+  //
+  //  cv::Point2f up_pixel = corners.at((projected.width-1)/2, projected.height/2));
+  //  up_pixel.x -= 50;
+  //
+  //  pcl_Point up = cloud.at(up_pixel.x, up_pixel.y);
+  //
+  //  pl_upwards.x() = up.x - pl_center.x;
+  //  pl_upwards.y() = up.y-pl_center.y;
+  //  pl_upwards.z() = up.z-pl_center.z;
 
 
   pl_center = Eigen::Vector3f(p.x,p.y,p.z);
@@ -533,20 +557,20 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
 
-//  pcl::getTransformedPointCloud(cloud,kinect_trafo,cloud);
-//
-//  // ROS_INFO("sending on projected (%zu points)", filtered.size());
-//
-//ROS_INFO("cloud: %i %i", cloud.width, cloud.height);
-//  pcl_Point middle = cloud.at(cloud.width, cloud.height/2);
-//  pcl_Point up = cloud.at(cloud.width, 0);
-//
-//  Vector3f up_(up.x-middle.x,up.x-middle.y,up.x-middle.z);
-//
-//  ROS_INFO("middle: %f %f %f", middle.x,middle.y,middle.z);
-//  ROS_INFO("up: %f %f %f", up.x,up.y,up.z);
-//
-//  ROS_INFO("new up: %f %f %f", up_.x(),up_.y(), up_.z());
+  //  pcl::getTransformedPointCloud(cloud,kinect_trafo,cloud);
+  //
+  //  // ROS_INFO("sending on projected (%zu points)", filtered.size());
+  //
+  //ROS_INFO("cloud: %i %i", cloud.width, cloud.height);
+  //  pcl_Point middle = cloud.at(cloud.width, cloud.height/2);
+  //  pcl_Point up = cloud.at(cloud.width, 0);
+  //
+  //  Vector3f up_(up.x-middle.x,up.x-middle.y,up.x-middle.z);
+  //
+  //  ROS_INFO("middle: %f %f %f", middle.x,middle.y,middle.z);
+  //  ROS_INFO("up: %f %f %f", up.x,up.y,up.z);
+  //
+  //  ROS_INFO("new up: %f %f %f", up_.x(),up_.y(), up_.z());
 
 
   Cloud::Ptr msg = cloud.makeShared();
@@ -554,26 +578,26 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   msg->header.stamp = ros::Time::now ();
   pub.publish(msg);
 
-//  tf::Transform transform;
-//  transform.setOrigin( tf::Vector3(0,0,0) );
-//  transform.setRotation( tf::Quaternion(-kinect_tilt_angle_deg/180*M_PI, 0,0) );
-//
-//  ROS_INFO("Quatenion: %f %f %f %f", transform.getRotation().x(),transform.getRotation().y(),transform.getRotation().z(),transform.getRotation().w());
-//
-//
-//  Eigen::Matrix4f rot;
-//
-//  pcl_ros::transformAsMatrix(transform, rot);
-//
-//  Eigen::Affine3f rot_affine(rot);
-//
-//  kinect_trafo = rot_affine*kinect_trafo;
+  //  tf::Transform transform;
+  //  transform.setOrigin( tf::Vector3(0,0,0) );
+  //  transform.setRotation( tf::Quaternion(-kinect_tilt_angle_deg/180*M_PI, 0,0) );
+  //
+  //  ROS_INFO("Quatenion: %f %f %f %f", transform.getRotation().x(),transform.getRotation().y(),transform.getRotation().z(),transform.getRotation().w());
+  //
+  //
+  //  Eigen::Matrix4f rot;
+  //
+  //  pcl_ros::transformAsMatrix(transform, rot);
+  //
+  //  Eigen::Affine3f rot_affine(rot);
+  //
+  //  kinect_trafo = rot_affine*kinect_trafo;
 
 
 
 
-//  saveMatrix(kinect_trafo,"data/kinect_trafo.txt");
-//  ROS_INFO("Wrote kinect_trafo to data/kinect_trafo.txt");
+  //  saveMatrix(kinect_trafo,"data/kinect_trafo.txt");
+  //  ROS_INFO("Wrote kinect_trafo to data/kinect_trafo.txt");
 
 
   kinect_trafo_valid = true;
@@ -610,10 +634,9 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   prog_state = COLLECT_PATTERNS;
 
 
-  cv::Mat H_cv, H_svd;
-
- computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
- computeHomography_SVD(projector_corners, corners_3d, H_cv);
+//  cv::Mat H_cv, H_svd;
+//  computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
+//  computeHomography_SVD(projector_corners, corners_3d, H_cv);
 
 
 
@@ -633,15 +656,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   }
 
 
-//  IplImage img_ipl = projector_image;
-//  cvShowImage("fullscreen_ipl", &img_ipl);
+  //  IplImage img_ipl = projector_image;
+  //  cvShowImage("fullscreen_ipl", &img_ipl);
 
 
   // cout << "write" << endl << proj_Matrix << endl;
-//  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
-//  assert(fs.isOpened());
-//  fs << "ProjectionMatrix" << proj_Matrix;
-//  fs.release();
+  //  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
+  //  assert(fs.isOpened());
+  //  fs << "ProjectionMatrix" << proj_Matrix;
+  //  fs.release();
  }
 
  if (proj_Matrix.cols > 0){
@@ -670,7 +693,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   //		cout << "sending cloud" << endl;
   Cloud filtered;
 
-    applyMask(cloud, filtered,mask_image);
+  applyMask(cloud, filtered,mask_image);
   pcl::getTransformedPointCloud(cloud,kinect_trafo,filtered);
 
   // ROS_INFO("sending on projected (%zu points)", filtered.size());
@@ -746,12 +769,12 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
  // ROS_INFO("got imu: x: %f, phi: %f", imu_ptr->linear_acceleration.x, asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180);
-// ROS_INFO("x,y,z: %f %f %f", imu_ptr->linear_acceleration.x,imu_ptr->linear_acceleration.y,imu_ptr->linear_acceleration.z);
+ // ROS_INFO("x,y,z: %f %f %f", imu_ptr->linear_acceleration.x,imu_ptr->linear_acceleration.y,imu_ptr->linear_acceleration.z);
 
  //if (!kinect_tilt_angle_valid)
  {
   kinect_tilt_angle_deg = asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180;
- // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
+  // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
   kinect_tilt_angle_valid = true;
  }
 
