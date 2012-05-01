@@ -1,0 +1,8 @@
+cmake_install.cmake
+.cproject
+.project
+.pydevproject
+bin/
+build/
+data/
+*.*~
