@@ -255,7 +255,6 @@ void showImageZone(const Cloud& full_moved){
  src.push_back(cv::Point2f(width_px, height_px));
  src.push_back(cv::Point2f(0, height_px));
 
- ROS_INFO("hello");
  // compute trafo from image x to world position:
  cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
  px_to_world.setTo(0);
@@ -300,7 +299,7 @@ void showImageZone(const Cloud& full_moved){
 
 
  vector<cv::Point2f> src_trafoed;
- cv::perspectiveTransform(src, src_trafoed, trafo);
+ cv::perspectiveTransform(src, src_trafoed, trafo_1);
 
  cout << "projective Trafo from projection: " << endl << trafo_1 << endl;
 
@@ -634,9 +633,9 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   prog_state = COLLECT_PATTERNS;
 
 
-//  cv::Mat H_cv, H_svd;
-//  computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
-//  computeHomography_SVD(projector_corners, corners_3d, H_cv);
+  cv::Mat H_cv, H_svd;
+  computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
+  computeHomography_SVD(projector_corners, corners_3d, H_svd);
 
 
 
