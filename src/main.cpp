@@ -39,7 +39,7 @@
 #include "misc.h"
 #include "meshing.h"
 #include "find_rect.h"
-
+#include "projector_calibrator.h"
 
 ros::Publisher pub;
 ros::Publisher pub_full_moved;
@@ -53,6 +53,8 @@ enum Calib_state  {GET_KINECT_TRAFO,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_
 
 Calib_state prog_state;
 
+
+vector<float> measured_angles;
 
 cv::Mat proj_Matrix;
 
@@ -381,35 +383,6 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
  Cloud cloud;
  pcl::fromROSMsg(*cloud_ptr, cloud);
 
-
-
- // Cloud out;
- // pcl_ros::transformPointCloud(cloud, out, transform);
- //
- // Cloud::Ptr msg = out.makeShared();
- // msg->header.frame_id = "/openni_rgb_optical_frame";
- // msg->header.stamp = ros::Time::now ();
- // pub_full_moved.publish(msg);
- // // pub_full_moved.publish(out);
-
-
- // cout << "callback" << endl;
-
-
- // cout << cloud_ptr->header.frame_id << endl;
-
-
- // Cloud filtered = rect_finder->find_rect(cloud);
- //
- //
- // pcl::io::savePCDFile("scene.pcd", filtered);
-
- // pcl::PolygonMesh mesh = createMeshFromPointcloud(cloud);
- //
- // mv->visualizeMesh(cloud, mesh);
- //// mv->visualizeMeshLines(filtered, mesh);
- //
- // ROS_INFO("created mesh");
 
 
 
@@ -767,14 +740,19 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 }
 
 void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
- // ROS_INFO("got imu: x: %f, phi: %f", imu_ptr->linear_acceleration.x, asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180);
- // ROS_INFO("x,y,z: %f %f %f", imu_ptr->linear_acceleration.x,imu_ptr->linear_acceleration.y,imu_ptr->linear_acceleration.z);
 
- //if (!kinect_tilt_angle_valid)
+ if (!kinect_tilt_angle_valid)
  {
   kinect_tilt_angle_deg = asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180;
-  // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
-  kinect_tilt_angle_valid = true;
+  measured_angles.push_back(kinect_tilt_angle_deg);
+
+  if (measured_angles.size() == 200){
+   kinect_tilt_angle_deg = 0;
+   for (uint i=0; i<measured_angles.size(); ++i) kinect_tilt_angle_deg += measured_angles[i]/measured_angles.size();
+   // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
+   kinect_tilt_angle_valid = true;
+  }
+  // ROS_INFO("current angle: %.1f deg", kinect_tilt_angle_deg);
  }
 
 }
