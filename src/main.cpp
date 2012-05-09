@@ -38,7 +38,6 @@
 #include "user_input.h"
 #include "misc.h"
 #include "meshing.h"
-#include "find_rect.h"
 #include "projector_calibrator.h"
 
 ros::Publisher pub;
@@ -46,12 +45,15 @@ ros::Publisher pub_full_moved;
 using namespace std;
 using namespace sensor_msgs;
 using namespace message_filters;
-
+namespace enc = sensor_msgs::image_encodings;
 
 
 enum Calib_state  {GET_KINECT_TRAFO,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_SETUP};
 
 Calib_state prog_state;
+
+
+Projector_Calibrator calibrator;
 
 
 vector<float> measured_angles;
@@ -95,8 +97,8 @@ Vector3f pl_center, pl_upwards, pl_right;
 
 Cloud corners_3d;
 
-Mesh_visualizer* mv;
-Rect_finder* rect_finder;
+//Mesh_visualizer* mv;
+//Rect_finder* rect_finder;
 #include <iostream>
 #include <fstream>
 
@@ -349,7 +351,7 @@ void createMaskFromPoints(IplImage* mask,const vector<CvPoint>& points){
 }
 
 // assumption: checkerboard is aligned with image axis!
-void createMaskFromCheckerBoardDetections(IplImage* mask,const CvPoint2D32f* pts, CvSize boardSize){
+void createMaskFromCheckerBoardDetecticorners_2dons(IplImage* mask,const CvPoint2D32f* pts, CvSize boardSize){
  cvSet(mask,cvScalarAll(0));
  int w = boardSize.width; int h = boardSize.height;
  int l = pts[1].x-pts[0].x; // length of a square
@@ -384,7 +386,16 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
  pcl::fromROSMsg(*cloud_ptr, cloud);
 
 
+ cv_bridge::CvImagePtr cv_ptr;
 
+
+ cv_ptr = cv_bridge::toCvCopy(img_ptr , enc::BGR8);
+
+
+ calibrator.setInputImage(cv_ptr->image);
+
+
+ cv::Mat img = cv_ptr->image;
 
  sensor_msgs::CvBridge bridge;
 
@@ -413,24 +424,27 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   cout << "State: GET_PROJECTION" << endl;
 
 
- CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
- int c_cnt=0;
- bool board_found = false;
+// CvPoint2D32f corners[C_checkboard_size.width*C_checkboard_size.height];
+// int c_cnt=0;
+// bool board_found = false;
 
  if (prog_state == GET_KINECT_TRAFO || prog_state == COLLECT_PATTERNS){
 
   ROS_INFO("Searching for checkerboard");
 
-  cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
-  board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
+  if (!calibrator.findCheckerboardCorners()) { ROS_WARN("Corners were not detected!"); return; }
 
-  if (board_found){ ROS_WARN("Checkerboard was detected");
-  }else { ROS_WARN("Board was not found!"); return; }
 
-  IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
-  cvCvtColor(col,gray, CV_BGR2GRAY);
-  cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
-  //  cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,board_found);
+//  cvFindChessboardCorners(col, C_checkboard_size,corners, &c_cnt,CV_CALIB_CB_ADAPTIVE_THRESH);
+//  board_found = (c_cnt == C_checkboard_size.width*C_checkboard_size.height);
+//
+//  if (board_found){ ROS_WARN("Checkerboard was detected");
+//  }else { ROS_WARN("Board was not found!"); return; }
+//
+//  IplImage* gray = cvCreateImage(cvGetSize(col),col->depth, 1);
+//  cvCvtColor(col,gray, CV_BGR2GRAY);
+//  cvFindCornerSubPix(gray, corners, c_cnt,cvSize(5,5),cvSize(1,1),cvTermCriteria(CV_TERMCRIT_EPS | CV_TERMCRIT_ITER, 10,0.1));
+//  //  cvDrawChessboardCorners(col, C_checkboard_size, corners, c_cnt,board_found);
   //  cvShowImage("camera", col);
   //  cv::waitKey(0);
  }
@@ -438,14 +452,15 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
 #ifdef MASK_FROM_DETECTIONS
- if (board_found && !depth_mask_valid){
+ if (!calibrator.mask_valid()){
   ROS_INFO("Creating Mask");
-  createMaskFromCheckerBoardDetections(mask_image,corners,C_checkboard_size);
-  cvNamedWindow("mask");
-  cvShowImage("mask", mask_image);
-  cvSaveImage("data/mask.png", mask_image);
-  cout << "new mask was saved to data/mask.png" << endl;
-  depth_mask_valid = true;
+  calibrator.setMaskFromDetections();
+//  createMaskFromCheckerBoardDetections(mask_image,corners,C_checkboard_size);
+//  cvNamedWindow("mask");
+//  cvShowImage("mask", mask_image);
+//  cvSaveImage("data/mask.png", mask_image);
+//  cout << "new mask was saved to data/mask.png" << endl;
+//  depth_mask_valid = true;
  }
 #else
  if (!depth_mask_valid){
@@ -464,8 +479,14 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
  if (prog_state == GET_KINECT_TRAFO){
 
-  if (!depth_mask_valid){ ROS_INFO("No depth mask!"); return; }
+  if (!calibrator.mask_valid()){ ROS_INFO("No depth mask!"); return; }
 
+
+  calibrator.setInputCloud(cloud);
+
+  calibrator.computeKinectTransformation();
+
+/*
   // fit plane to pointcloud:
   Cloud filtered;
   applyMask(cloud, filtered,mask_image);
@@ -480,8 +501,8 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   int m = (C_checkboard_size.height/2*C_checkboard_size.width)+(C_checkboard_size.width-1)/2;
 
-  pcl_Point p  = cloud.at(corners[m].x, corners[m].y);
-  pcl_Point p2 = cloud.at(corners[m].x+sin(-kinect_tilt_angle_deg/180*M_PI)*100, corners[m].y-cos(-kinect_tilt_angle_deg/180*M_PI)*100);
+  pcl_Point p;//  = cloud.at(corners[m].x, corners[m].y);
+  pcl_Point p2;// = cloud.at(corners[m].x+sin(-kinect_tilt_angle_deg/180*M_PI)*100, corners[m].y-cos(-kinect_tilt_angle_deg/180*M_PI)*100);
 
   //ROS_INFO("mitte: %f %f",cloud.at(corners[m].x, cloud.at(corners[m].y );
   //ROS_INFO("d: ")
@@ -573,6 +594,11 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 
   kinect_trafo_valid = true;
+
+
+  */
+
+
   prog_state = COLLECT_PATTERNS;
  }
 
@@ -580,9 +606,12 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
  // Cloud transformed_cloud;
  if (prog_state == COLLECT_PATTERNS){
 
+  calibrator.storeCurrent3DObservations();
+/*
   Cloud c_3d;
   // get 3dPose at the corner positions:
   vector<int> inlier;
+
   for (int i=0; i<c_cnt; ++i){
    pcl_Point p = cloud.at(corners[i].x, corners[i].y);
    if (!(p.x == p.x)){ROS_WARN("projectToPlane: Found Corner without depth!"); return; }
@@ -595,6 +624,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   corners_3d.points.insert(corners_3d.points.end(),c_3d.points.begin(), c_3d.points.end());
 
   cout << "corners_3d.size: " << corners_3d.points.size() << endl;
+  */
  }
 
 
@@ -602,35 +632,28 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   // ROS_INFO("Get projection");
 
-  computeProjectionMatrix(proj_Matrix, corners_3d, projector_corners);
+
+  calibrator.computeHomography_OPENCV(projector_corners);
+  calibrator.computeHomography_SVD(projector_corners);
+  calibrator.computeProjectionMatrix(projector_corners);
+
   prog_state = COLLECT_PATTERNS;
-
-
-  cv::Mat H_cv, H_svd;
-  computeHomography_OPENCV(projector_corners, corners_3d, H_cv);
-  computeHomography_SVD(projector_corners, corners_3d, H_svd);
-
 
 
 
   // show all corners on image:
 
-  for (uint i=0; i<corners_3d.size(); ++i){
-   cv::Point2f proj;
-   applyPerspectiveTrafo(cv::Point3f(corners_3d[i].x,corners_3d[i].y,corners_3d[i].z),proj_Matrix,proj);
-
-   // ROS_INFO("PX: %i %i", x,y);
-   // ROS_INFO("3d: %f %f %f", corners_3d[i].x,corners_3d[i].y,corners_3d[i].z);
-   // ROS_INFO("projected: %f %f", proj.x, proj.y);
-
-   cv::circle(projector_image, proj,10, CV_RGB(255,0,0),2);
-
-  }
-
-
-  //  IplImage img_ipl = projector_image;
-  //  cvShowImage("fullscreen_ipl", &img_ipl);
-
+//  for (uint i=0; i<corners_3d.size(); ++i){
+//   cv::Point2f proj;
+//   applyPerspectiveTrafo(cv::Point3f(corners_3d[i].x,corners_3d[i].y,corners_3d[i].z),proj_Matrix,proj);
+//
+//   // ROS_INFO("PX: %i %i", x,y);
+//   // ROS_INFO("3d: %f %f %f", corners_3d[i].x,corners_3d[i].y,corners_3d[i].z);
+//   // ROS_INFO("projected: %f %f", proj.x, proj.y);
+//
+//   cv::circle(projector_image, proj,10, CV_RGB(255,0,0),2);
+//
+//  }
 
   // cout << "write" << endl << proj_Matrix << endl;
   //  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
@@ -849,9 +872,9 @@ int main(int argc, char ** argv)
   prog_state = EVERYTHING_SETUP;
  }
 
-
- mv = new Mesh_visualizer();
- rect_finder = new Rect_finder();
+//
+// mv = new Mesh_visualizer();
+// rect_finder = new Rect_finder();
 
  sub_imu = nh.subscribe("/imu", 10, imu_CB);
 

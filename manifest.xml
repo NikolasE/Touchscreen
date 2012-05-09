@@ -15,7 +15,6 @@
   <depend package="image_view"/>
   <depend package="geometry_msgs"/>
   <depend package="eigen"/>
-  <depend package="cv_bridge"/>
   <depend package="camera_calibration"/>
   <depend package="tf"/>
   <depend package="tf_conversions"/>
@@ -25,6 +24,7 @@
   <depend package="image_rotate"/>
   <depend package="image_transport"/>
   <depend package="image_view"/>
+    <depend package="cv_bridge"/>
   <depend package="pcl_ros"/>
   <depend package="pcl"/>
   <depend package="visualization_msgs"/>

@@ -9,6 +9,10 @@
 #include "cloud_processing.h"
 
 
+
+
+
+
 // apply mask to orig (remove all points with mask(p)==0 and p.x = NAN)
 void applyMask(const Cloud& orig, Cloud& masked, const IplImage* mask){
 	assert(mask);
