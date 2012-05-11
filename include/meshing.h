@@ -8,7 +8,7 @@
 #ifndef MESHING_H_
 #define MESHING_H_
 
-#include "cloud_processing.h"
+#include "type_definitions.h"
 #include <pcl/surface/organized_fast_mesh.h>
 #include <pcl/io/vtk_io.h>
 #include "visualization_msgs/MarkerArray.h"
@@ -18,14 +18,6 @@
 #include <pcl/features/normal_3d.h>
 
 
-pcl::PolygonMesh createMeshFromPointcloud(const Cloud& cloud);
-
-
-
-/*
- * Create mesh from organized pointcloud
- */
-pcl::PolygonMesh createSimpleMeshFromPointcloud(const Cloud& cloud, float max_dist_cm);
 
 
 

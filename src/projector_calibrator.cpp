@@ -5,6 +5,9 @@
  *      Author: engelhan
  */
 
+
+using namespace std;
+
 #include "projector_calibrator.h"
 
 
@@ -41,8 +44,7 @@ bool Projector_Calibrator::saveMat(const string name, const string filename, con
 
 void Projector_Calibrator::initFromFile(){
 
- mask = cv::imread("data/proj_mask.png",0);
-
+ mask = cv::imread("data/kinect_mask.png",0);
  if (mask.data){
   ROS_INFO("Found mask (%i %i)", mask.cols, mask.rows);
  }else {
@@ -52,7 +54,7 @@ void Projector_Calibrator::initFromFile(){
 
  // Check for Kinect trafo:
  char fn[100]; sprintf(fn, "data/%s.txt",kinect_trafo_filename.c_str());
- kinect_trafo_valid = loadMatrix(kinect_trafo,fn);
+ kinect_trafo_valid = loadAffineTrafo(kinect_trafo,fn);
  if (kinect_trafo_valid)  ROS_INFO("Found kinect trafo");
  else  ROS_WARN("Could not load Kinect Trafo from %s", fn);
 
@@ -75,6 +77,9 @@ void Projector_Calibrator::drawCheckerboard(cv::Mat& img, const cv::Size size, v
  //   minx = min(minx,i*1.f); miny = min(miny,j*1.f);
  //   maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
  //  }
+
+
+ corners_2d.clear();
 
  // draw white border with this size
  // "Note: the function requires some white space (like a square-thick border,
@@ -115,6 +120,78 @@ void Projector_Calibrator::drawCheckerboard(cv::Mat& img, const cv::Size size, v
  assert(int(corners_2d.size()) == size.width*size.height);
 
 }
+
+
+
+
+// set wall_region to same ratio as image
+void Projector_Calibrator::setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size){
+ setupImageProjection(width_m, width_m/img_size.width*img_size.height, off_x_m, off_y_m, img_size);
+}
+
+
+void Projector_Calibrator::setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size){
+
+ cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
+ px_to_world.setTo(0);
+
+ int width_px  = img_size.width;
+ int height_px = img_size.height;
+
+ float height_m_2 = width_m/width_px*height_px;
+
+ if (fabs(height_m_2-height_m) > 0.1){
+  ROS_WARN("setupImageProjection: Image and wall-section have different ratios!");
+ }
+
+
+
+ if (projMatrixSet()){
+
+  ROS_INFO("Computing warp from Projection Matrix!");
+
+  px_to_world.at<double>(3,2) = 1;
+  px_to_world.at<double>(0,0) = width_m/width_px;
+  px_to_world.at<double>(0,2) = off_x_m;
+  px_to_world.at<double>(1,1) = height_m/height_px; // == width/width_px
+  px_to_world.at<double>(1,2) = off_y_m;
+
+
+  warp_matrix = proj_Matrix*px_to_world;
+  warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
+
+  cout << "warp_matrix" << endl << warp_matrix << endl;
+
+  // TODO SAVE
+
+ }
+
+ // TODO also compute from homographies!
+
+
+ return;
+
+}
+
+void Projector_Calibrator::showUnWarpedImage(const cv::Mat& img){
+
+ if (!warpMatrixSet()){
+  ROS_INFO("showUnWarpedImage: call setupImageProjection first.."); return;
+ }
+
+ // clear projector image
+ projector_image.setTo(0);
+
+ cv::Size size(projector_image.cols, projector_image.rows);
+ cv::warpPerspective(img, projector_image, warp_matrix, size, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+ IplImage img_ipl = projector_image;
+ cvShowImage("fullscreen_ipl", &img_ipl);
+
+
+}
+
+
+
 
 
 void Projector_Calibrator::computeHomography_OPENCV(){
@@ -311,7 +388,11 @@ void Projector_Calibrator::computeProjectionMatrix(){
  uint c_cnt = observations_3d.points.size();
  uint proj_cnt = projector_corners.size();
 
- assert(c_cnt >0 && c_cnt % proj_cnt == 0);
+ if (c_cnt == 0){
+  ROS_WARN("Can't compute projection matrix without 3d points");
+ }
+
+ assert(c_cnt % proj_cnt == 0);
 
  int img_cnt = c_cnt/proj_cnt;
 
@@ -402,8 +483,16 @@ void Projector_Calibrator::computeProjectionMatrix(){
 
 bool Projector_Calibrator::findCheckerboardCorners(){
  corners.clear();
- if (input_image.rows == 0){  ROS_WARN("can't find Corners on empty image!"); return false;  }
- if (!cv::findChessboardCorners(input_image, C_checkboard_size,corners, CV_CALIB_CB_ADAPTIVE_THRESH)) return false;
+ if (input_image.rows == 0){  ROS_WARN("can't find corners on empty image!"); return false;  }
+
+ // cv::namedWindow("search",1);
+ // cv::imshow("search", input_image);
+ // cv::waitKey(-1);
+
+ if (!cv::findChessboardCorners(input_image, C_checkboard_size,corners, CV_CALIB_CB_ADAPTIVE_THRESH)) {
+  ROS_WARN("Could not find a checkerboard!");
+  return false;
+ }
  cv::cvtColor(input_image, gray, CV_BGR2GRAY);
  cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
  return true;
@@ -484,8 +573,8 @@ void Projector_Calibrator::computeKinectTransformation(){
  Eigen::Vector3f pl_center = Eigen::Vector3f(p.x,p.y,p.z);
  Eigen::Vector3f pl_upwards = Eigen::Vector3f(p2.x-p.x,p2.y-p.y,p2.z-p.z);
 
-// float plane_direction = 1;
-// if (plane_model.head<3>()[2] < 0){ plane_direction  = -1; }
+ // float plane_direction = 1;
+ // if (plane_model.head<3>()[2] < 0){ plane_direction  = -1; }
 
  float plane_direction = plane_model.head<3>()[2]>0?1:-1;
 
@@ -494,7 +583,7 @@ void Projector_Calibrator::computeKinectTransformation(){
 
  // save to file
  char fn[100]; sprintf(fn, "data/%s.txt",kinect_trafo_filename.c_str());
- saveMatrix(kinect_trafo,fn);
+ saveAffineTrafo(kinect_trafo,fn);
  ROS_INFO("Wrote kinect_trafo to %s", fn);
 
  kinect_trafo_valid = true;
@@ -520,11 +609,11 @@ void Projector_Calibrator::createMaskFromDetections(){
 
  ROS_INFO("Writing kinect_mask to data/kinect_mask.png");
  cv::imwrite("data/kinect_mask.png", mask);
-//
-//
-//  cv::namedWindow("Mask on Kinect Image");
-//  cv::imshow("Mask on Kinect Image", mask);
-//  cv::waitKey(-1);
+ //
+ //
+ //  cv::namedWindow("Mask on Kinect Image");
+ //  cv::imshow("Mask on Kinect Image", mask);
+ //  cv::waitKey(-1);
 }
 
 
@@ -566,4 +655,11 @@ void Projector_Calibrator::applyMaskOnInputCloud(Cloud& out){
   }
 }
 
+
+void Projector_Calibrator::showFullscreenCheckerboard(){
+
+ drawCheckerboard(projector_image, C_checkboard_size, projector_corners);
+ IplImage proj_ipl = projector_image;
+ cvShowImage("fullscreen_ipl", &proj_ipl);
+}
 

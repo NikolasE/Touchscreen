@@ -8,16 +8,14 @@
 #ifndef PROJECTOR_CALIBRATOR_H_
 #define PROJECTOR_CALIBRATOR_H_
 
-#include "cloud_processing.h"
+#include "type_definitions.h"
 #include "calibration.h"
 #include "user_input.h"
-#include "misc.h"
-#include "meshing.h"
 
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
 #include <opencv2/imgproc/imgproc.hpp>
-
+#include <pcl/common/transform.h>
 
 class Projector_Calibrator {
 
@@ -30,7 +28,14 @@ class Projector_Calibrator {
  // The projection matrix of the projector and the homographies computed via OpenCV and SVD
  cv::Mat proj_Matrix, hom_CV, hom_SVD;
 
- // trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0 and parallel to image axis
+
+ // a simple image for debugging
+ cv::Mat test_img;
+
+ // apply on image
+ cv::Mat warp_matrix;
+
+ // trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0
  // the first trafo is stored and used for all following frames
  Eigen::Affine3f kinect_trafo;
  bool kinect_trafo_valid;
@@ -49,13 +54,15 @@ class Projector_Calibrator {
  // point cloud from kinect (still in kinect frame)
  Cloud input_cloud;
 
+ // point cloud in wall-frame
+ Cloud cloud_moved;
 
  // tilt of kinect (rotation around optical axis)
  float kinect_tilt_angle_deg;
  bool kinect_orientation_valid;
 
  // pixel coordinates of the detected checkerboard corners
- vector<cv::Point2f> corners;
+ std::vector<cv::Point2f> corners;
 
  // remove all point from the input cloud where mask!=255
  void applyMaskOnInputCloud(Cloud& out);
@@ -68,30 +75,36 @@ class Projector_Calibrator {
  Cloud observations_3d;
 
 
+
  // draw a checkerboard with given number of internal corners on the image and store the corners
- void drawCheckerboard(cv::Mat& img, const cv::Size size, vector<cv::Point2f>& corners_2d);
+ void drawCheckerboard(cv::Mat& img, const cv::Size size, std::vector<cv::Point2f>& corners_2d);
 
 
  // Position of internal checkerboard corners
  std:: vector<cv::Point2f> projector_corners;
 
 
- string hom_cv_filename, hom_svd_filename, proj_matrix_filename, kinect_trafo_filename;
+ std::string hom_cv_filename, hom_svd_filename, proj_matrix_filename, kinect_trafo_filename;
 
- bool saveMat(const string name, const string filename, const cv::Mat& mat);
- bool loadMat(const string name, const string filename, cv::Mat& mat);
+ bool saveMat(const std::string name, const std::string filename, const cv::Mat& mat);
+ bool loadMat(const std::string name, const std::string filename, cv::Mat& mat);
 
 
 public:
 
+
+ Cloud* getTransformedCloud(){return &cloud_moved;}
 
  void initFromFile();
 
  bool projMatrixSet(){ return proj_Matrix.cols > 0;}
  bool homOpenCVSet(){ return hom_CV.cols > 0;}
  bool homSVDSet(){ return hom_SVD.cols > 0;}
+ bool warpMatrixSet(){ return warp_matrix.cols > 0;}
 
 
+ void setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size);
+ void setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size);
 
 
  // save 3d positions (in wall-frame) of the last checkerboard detection
@@ -114,8 +127,23 @@ public:
  void createMaskFromDetections();
 
  void setInputImage(cv::Mat& image){input_image = image; corners.clear();}
- void setInputCloud(Cloud& cloud){input_cloud = cloud;}
+ void setInputCloud(Cloud& cloud){
+  input_cloud = cloud;
+  if (kinect_trafo_valid)
+   pcl::getTransformedPointCloud(input_cloud,kinect_trafo,cloud_moved);
+ }
 
+
+
+ void showUnWarpedImage(const cv::Mat& img);
+
+ void showUnWarpedImage(){
+  assert(test_img.data);
+  showUnWarpedImage(test_img);
+ }
+
+
+ cv::Mat* getTestImg(){return &test_img;}
 
 
 
@@ -123,6 +151,8 @@ public:
  void computeProjectionMatrix();
  void computeHomography_OPENCV();
  void computeHomography_SVD();
+
+void showFullscreenCheckerboard();
 
 
  Projector_Calibrator(){
@@ -133,20 +163,23 @@ public:
 
   projector_image = cv::Mat(C_proj_size, CV_8UC3);
 
-  drawCheckerboard(projector_image, C_checkboard_size, projector_corners);
   hom_cv_filename = "homography_opencv";
   hom_svd_filename = "homography_svd";
   proj_matrix_filename = "projection_matrix";
   kinect_trafo_filename = "kinect_trafo";
 
+  test_img = cv::imread("/usr/gast/engelhan/ros/Touchscreen/imgs/Testbild.png");
+
+  if (!test_img.data){
+   ROS_ERROR("Could not open test image!");
+  }
 
   // creating fullscreen image (old syntax)
   cvNamedWindow("fullscreen_ipl",0);
   cvMoveWindow("fullscreen_ipl", 2000, 100);
   cvSetWindowProperty("fullscreen_ipl", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
-  IplImage proj_ipl = projector_image;
-  cvShowImage("fullscreen_ipl", &proj_ipl);
 
+  showFullscreenCheckerboard();
 
  }
 

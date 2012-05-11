@@ -64,10 +64,6 @@ void Mesh_visualizer::visualizeMeshLines(const Cloud& cloud, const pcl::PolygonM
 }
 
 
-
-
-
-
 void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& mesh){
 
  // if (pub_.getNumSubscribers() == 0) {ROS_INFO("mesh: no one is listening"); return;}
@@ -137,47 +133,3 @@ void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& 
 }
 
 
-
-
-
-float sq_diff(pcl_Point a, pcl_Point b){
- return (a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z);
-}
-
-pcl::PolygonMesh createSimpleMeshFromPointcloud(const Cloud& cloud, float max_dist_cm){
-  pcl::PolygonMesh mesh;
- // for (uint x=0; x<cloud.width-1; ++x)
- //  for (uint y=0; y<cloud.height-1; ++y){
- //   pcl_Point tl = cloud.at(x,y);
- //   pcl_Point tr = cloud.at(x+1,y);
- //   pcl_Point ll = cloud.at(x,y+1);
- //   pcl_Point lr = cloud.at(x+1,y+1);
- //
- //   // left upper triangle:
- //   float d1 = sq_diff(tl, tr);
- // }
- //
-  return mesh;
-}
-
-pcl::PolygonMesh createMeshFromPointcloud(const Cloud& cloud){
-
-
- ROS_INFO("MESH: cloud has %zu points", cloud.size());
-
- pcl::OrganizedFastMesh< pcl_Point > mesher;
- mesher.setInputCloud(cloud.makeShared());
- mesher.setMaxEdgeLength(1000);
-
- pcl::PolygonMesh mesh;
-
- mesher.reconstruct(mesh);
-
- ROS_INFO("MESHER: %zu", mesh.polygons.size());
-
- pcl::io::saveVTKFile("mesh.vtk", mesh);
-
- return mesh;
-
-
-}
