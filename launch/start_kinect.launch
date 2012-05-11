@@ -1,0 +1,6 @@
+<launch>
+
+  <include file="$(find openni_camera)/launch/openni_node.launch" ></include>
+  <node pkg="kinect_aux" type="kinect_aux_node" name="kinect_aux" output="screen"></node>
+
+</launch>

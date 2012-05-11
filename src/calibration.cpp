@@ -81,7 +81,7 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
   d += sqrt(pow(p.x-mu[0],2)+pow(p.y-mu[1],2)+pow(p.z-mu[2],2));
  }
  d /= c_cnt;
- //	ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
+ 	// ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
 
  // mean distance should be sqrt(3)
  double s = sqrt(3)/d;

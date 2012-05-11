@@ -40,13 +40,13 @@
 #include "meshing.h"
 #include "projector_calibrator.h"
 
+
 ros::Publisher pub;
 ros::Publisher pub_full_moved;
 using namespace std;
 using namespace sensor_msgs;
 using namespace message_filters;
 namespace enc = sensor_msgs::image_encodings;
-
 
 enum Calib_state  {GET_KINECT_TRAFO,COLLECT_PATTERNS,GET_PROJECTION, EVERYTHING_SETUP};
 
@@ -376,7 +376,10 @@ void showMaskOnImage(IplImage* col, IplImage* mask){
 
 void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
- if (!kinect_tilt_angle_valid){
+// ROS_INFO("callback");
+
+ // Kinect's orientation is needed to compute the transformation
+ if (!calibrator.isKinectTrafoSet() && !calibrator.isKinectOrientationSet()){
   ROS_INFO("waiting for tilt angle!");
   return;
  }
@@ -453,8 +456,10 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 #ifdef MASK_FROM_DETECTIONS
  if (!calibrator.mask_valid()){
-  ROS_INFO("Creating Mask");
-  calibrator.setMaskFromDetections();
+ROS_INFO("creating new mask!");
+
+  calibrator.createMaskFromDetections();
+
 //  createMaskFromCheckerBoardDetections(mask_image,corners,C_checkboard_size);
 //  cvNamedWindow("mask");
 //  cvShowImage("mask", mask_image);
@@ -479,7 +484,10 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
  if (prog_state == GET_KINECT_TRAFO){
 
+
+
   if (!calibrator.mask_valid()){ ROS_INFO("No depth mask!"); return; }
+
 
 
   calibrator.setInputCloud(cloud);
@@ -633,9 +641,9 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   // ROS_INFO("Get projection");
 
 
-  calibrator.computeHomography_OPENCV(projector_corners);
-  calibrator.computeHomography_SVD(projector_corners);
-  calibrator.computeProjectionMatrix(projector_corners);
+  calibrator.computeHomography_OPENCV();
+  calibrator.computeHomography_SVD();
+  calibrator.computeProjectionMatrix();
 
   prog_state = COLLECT_PATTERNS;
 
@@ -764,7 +772,7 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
 void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 
- if (!kinect_tilt_angle_valid)
+ if (!calibrator.isKinectOrientationSet())
  {
   kinect_tilt_angle_deg = asin(imu_ptr->linear_acceleration.x/9.81)/M_PI*180;
   measured_angles.push_back(kinect_tilt_angle_deg);
@@ -772,23 +780,23 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
   if (measured_angles.size() == 200){
    kinect_tilt_angle_deg = 0;
    for (uint i=0; i<measured_angles.size(); ++i) kinect_tilt_angle_deg += measured_angles[i]/measured_angles.size();
-   // ROS_INFO("Set kinect tilt angle to %.1f deg", kinect_tilt_angle_deg);
+   ROS_INFO("Set kinect orientation to %.1f deg", kinect_tilt_angle_deg);
    kinect_tilt_angle_valid = true;
+   calibrator.setKinectOrientation(kinect_tilt_angle_deg);
   }
-  // ROS_INFO("current angle: %.1f deg", kinect_tilt_angle_deg);
  }
-
 }
 
 int main(int argc, char ** argv)
 {
 
-
- // createQUAD_PCD();
- // return 0;
-
-
  ros::init(argc, argv, "subscriber");
+
+//
+ calibrator.initFromFile();
+//
+// return 0;
+
  ros::NodeHandle nh;
  cvNamedWindow("camera", 1);
  //	cvNamedWindow("mask",1);
@@ -812,18 +820,18 @@ int main(int argc, char ** argv)
 
 
  // using old style for fullscreen image
- cvNamedWindow("fullscreen_ipl",0);
- cvMoveWindow("fullscreen_ipl", 2000, 100);
- cvSetWindowProperty("fullscreen_ipl", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
- IplImage proj_ipl = projector_image;
- cvShowImage("fullscreen_ipl", &proj_ipl);
+// cvNamedWindow("fullscreen_ipl",0);
+// cvMoveWindow("fullscreen_ipl", 2000, 100);
+// cvSetWindowProperty("fullscreen_ipl", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+// IplImage proj_ipl = projector_image;
+// cvShowImage("fullscreen_ipl", &proj_ipl);
 
 
  pub = nh.advertise<Cloud>("projected", 1);
  pub_full_moved = nh.advertise<Cloud>("full_moved", 1);
 
  // check if depth-mask exists:
- mask_image = cvLoadImage("data/mask.png",0);
+ //mask_image = cvLoadImage("data/mask.png",0);
  depth_mask_valid = (mask_image != NULL);
  if (!depth_mask_valid){ // file was not found
   mask_image = cvCreateImage(cvSize(640,480), IPL_DEPTH_8U, 1);
@@ -841,36 +849,36 @@ int main(int argc, char ** argv)
  prog_state = GET_KINECT_TRAFO;
 
  // read kinect_trafo
- kinect_trafo_valid = loadMatrix(kinect_trafo,"data/kinect_trafo.txt");
-
- if (kinect_trafo_valid){
-  ROS_INFO("found kinect_trafo");
-  for (uint i=0; i<4; ++i){
-   for (uint j=0; j<4; ++j)
-    cout << kinect_trafo(i,j) << " ";
-   cout << endl;
-  }
- }
+// kinect_trafo_valid = loadMatrix(kinect_trafo,"data/kinect_trafo.txt");
+//
+// if (kinect_trafo_valid){
+//  ROS_INFO("found kinect_trafo");
+//  for (uint i=0; i<4; ++i){
+//   for (uint j=0; j<4; ++j)
+//    cout << kinect_trafo(i,j) << " ";
+//   cout << endl;
+//  }
+// }
 
 
 
  // look for Projection matrix:
- cv::FileStorage fs2("data/projection_matrix.yml", cv::FileStorage::READ);
- fs2["ProjectionMatrix"] >> proj_Matrix;
- if (proj_Matrix.cols > 0){
-  cout << "projection" << endl << proj_Matrix << endl;
- }
-
- // if the projection matrix was deleted, also reestimate the kinect pose
- if (!kinect_trafo_valid && proj_Matrix.cols > 0){
-  ROS_INFO("Found kinect-trafo but no Projection matrix, reestimating kinect pose");
-  kinect_trafo_valid = false;
- }
-
- if (kinect_trafo_valid && proj_Matrix.cols > 0){
-  ROS_INFO("Loaded everything from file");
-  prog_state = EVERYTHING_SETUP;
- }
+// cv::FileStorage fs2("data/projection_matrix.yml", cv::FileStorage::READ);
+// fs2["ProjectionMatrix"] >> proj_Matrix;
+// if (proj_Matrix.cols > 0){
+//  cout << "projection" << endl << proj_Matrix << endl;
+// }
+//
+// // if the projection matrix was deleted, also reestimate the kinect pose
+// if (!kinect_trafo_valid && proj_Matrix.cols > 0){
+//  ROS_INFO("Found kinect-trafo but no Projection matrix, reestimating kinect pose");
+//  kinect_trafo_valid = false;
+// }
+//
+// if (kinect_trafo_valid && proj_Matrix.cols > 0){
+//  ROS_INFO("Loaded everything from file");
+//  prog_state = EVERYTHING_SETUP;
+// }
 
 //
 // mv = new Mesh_visualizer();
@@ -885,6 +893,7 @@ int main(int argc, char ** argv)
  message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
  Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
  sync.registerCallback(boost::bind(&callback, _1, _2));
+
 
 
  ros::spin();

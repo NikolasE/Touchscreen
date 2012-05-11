@@ -8,9 +8,116 @@
 #include "projector_calibrator.h"
 
 
+bool Projector_Calibrator::loadMat(const string name, const string filename, cv::Mat& mat){
+ char fn[100]; sprintf(fn,"data/%s.yml", filename.c_str());
+ ROS_INFO("Reading %s from %s", name.c_str(),fn);
+
+ cv::FileStorage fs(fn, cv::FileStorage::READ);
+ if (!fs.isOpened()){
+  ROS_WARN("Could not read %s", fn);
+  return false;
+ }
+
+ fs[filename] >> mat; fs.release();
+ fs.release();
+ return true;
+}
 
 
-void Projector_Calibrator::computeHomography_OPENCV(const vector<cv::Point2f>& projector_corners){
+bool Projector_Calibrator::saveMat(const string name, const string filename, const cv::Mat& mat){
+ char fn[100]; sprintf(fn,"data/%s.yml", filename.c_str());
+ ROS_INFO("Saving %s to %s", name.c_str(),fn);
+ cv::FileStorage fs(fn, cv::FileStorage::WRITE);
+ if (!fs.isOpened()){
+  ROS_WARN("Could not write to %s", fn);
+  return false;
+ }
+
+ fs << filename << mat;
+ fs.release();
+ return true;
+}
+
+
+void Projector_Calibrator::initFromFile(){
+
+ mask = cv::imread("data/proj_mask.png",0);
+
+ if (mask.data){
+  ROS_INFO("Found mask (%i %i)", mask.cols, mask.rows);
+ }else {
+  ROS_INFO("Could not find mask at data/kinect_mask.png");
+ }
+
+
+ // Check for Kinect trafo:
+ char fn[100]; sprintf(fn, "data/%s.txt",kinect_trafo_filename.c_str());
+ kinect_trafo_valid = loadMatrix(kinect_trafo,fn);
+ if (kinect_trafo_valid)  ROS_INFO("Found kinect trafo");
+ else  ROS_WARN("Could not load Kinect Trafo from %s", fn);
+
+
+ // load Matrices
+ loadMat("Projection Matrix", proj_matrix_filename, proj_Matrix);
+ loadMat("Homography (OpenCV)", hom_cv_filename, hom_CV);
+ loadMat("Homography (SVD)", hom_svd_filename, hom_SVD);
+}
+
+
+void Projector_Calibrator::drawCheckerboard(cv::Mat& img, const cv::Size size, vector<cv::Point2f>& corners_2d){
+
+ // get region of checkerboard
+ // float minx,maxx, miny, maxy;
+ // minx = miny = 1e5; maxx = maxy = -1e5;
+ // for (int i=0; i<mask->cols; ++i)
+ //  for (int j=0; j<mask->rows; ++j){
+ //   if (mask->at<uchar>(j,i) == 0) continue;
+ //   minx = min(minx,i*1.f); miny = min(miny,j*1.f);
+ //   maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
+ //  }
+
+ // draw white border with this size
+ // "Note: the function requires some white space (like a square-thick border,
+ // the wider the better) around the board to make the detection more robust in various environment"
+ float border = 40;
+
+ float width = (img.cols-2*border)/(size.width+1);
+ float height = (img.rows-2*border)/(size.height+1);
+
+ img.setTo(255); // all white
+
+ float minx = border;
+ float miny = border;
+
+ // ROS_INFO("GRID: W: %f, H: %f", width, height);
+
+ // start with black square
+ for (int j = 0; j<=size.height; j++)
+  for (int i = (j%2); i<size.width+1; i+=2){
+
+   cv::Point2f lu = cv::Point2f(minx+i*width,miny+j*height);
+   cv::Point2f rl = cv::Point2f(minx+(i+1)*width,miny+(j+1)*height);
+   cv::rectangle(img, lu, rl ,cv::Scalar::all(0), -1);
+
+   cv::Point2f ru = cv::Point2f(rl.x,lu.y);
+
+   if (j==0) continue;
+   if (i>0){
+    corners_2d.push_back(cv::Point2f(lu.x, lu.y));
+    //        cvCircle(img, cvPoint(lu.x, lu.y),20, CV_RGB(255,0,0),3);
+   }
+   if (i<size.width){
+    corners_2d.push_back(cv::Point2f(ru.x, ru.y));
+    //        cvCircle(img, cvPoint(ru.x, ru.y),20, CV_RGB(255,0,0),3);
+   }
+  }
+
+ assert(int(corners_2d.size()) == size.width*size.height);
+
+}
+
+
+void Projector_Calibrator::computeHomography_OPENCV(){
 
  ROS_WARN("COMPUTING HOMOGRAPHY WITH openCV");
 
@@ -71,17 +178,12 @@ void Projector_Calibrator::computeHomography_OPENCV(const vector<cv::Point2f>& p
 
  ROS_INFO("mean error: %f (x: %f, y: %f)", error, err_x, err_y);
 
- // cout << "write" << endl << "homography_OPENCV" << endl;
- //  cv::FileStorage fs("data/homography_OPENCV.yml", cv::FileStorage::WRITE);
- //  assert(fs.isOpened());
- //  fs << "ProjectionMatrix" << hom_CV;
- //  fs.release();
-
+ saveMat("Homography(OpenCV)", hom_cv_filename, hom_CV);
 
 }
 
 
-void Projector_Calibrator::computeHomography_SVD(const vector<cv::Point2f>& projector_corners){
+void Projector_Calibrator::computeHomography_SVD(){
 
  ROS_WARN("COMPUTING HOMOGRAPHY WITH SVD");
 
@@ -152,7 +254,7 @@ void Projector_Calibrator::computeHomography_SVD(const vector<cv::Point2f>& proj
  // h only fixed up to scale -> set h(3,3) = 1;
  h /= h.at<double>(8);
 
-// cout << "h: " << h << endl;
+ // cout << "h: " << h << endl;
 
  hom_SVD = cv::Mat(3,3,CV_64FC1);
 
@@ -199,119 +301,103 @@ void Projector_Calibrator::computeHomography_SVD(const vector<cv::Point2f>& proj
 
  ROS_INFO("mean error: %f (x: %f, y: %f)", error, err_x, err_y);
 
-
- // cout << "write" << endl << "homography_SVD" << endl;
- //  cv::FileStorage fs("data/homography_SVD.yml", cv::FileStorage::WRITE);
- //  assert(fs.isOpened());
- //  fs << "ProjectionMatrix" << hom_SVD;
- //  fs.release();
-
-
+ saveMat("Homography(SVD)", hom_svd_filename, hom_SVD);
 }
 
-void Projector_Calibrator::computeProjectionMatrix(const vector<cv::Point2f>& projector_corners){
 
-  uint c_cnt = observations_3d.points.size();
-  uint proj_cnt = projector_corners.size();
-
-  assert(c_cnt >0 && c_cnt % proj_cnt == 0);
-
-  int img_cnt = c_cnt/proj_cnt;
-
-  ROS_WARN("Computing Projection matrix from %i images", img_cnt);
+void Projector_Calibrator::computeProjectionMatrix(){
 
 
-  Cloud trafoed_corners;
-  vector<cv::Point2f> trafoed_px;
-  cv::Mat U,T;
+ uint c_cnt = observations_3d.points.size();
+ uint proj_cnt = projector_corners.size();
 
-  scaleCloud(observations_3d, U, trafoed_corners);
-  scalePixels(projector_corners, T, trafoed_px);
+ assert(c_cnt >0 && c_cnt % proj_cnt == 0);
 
-  cv::Mat A = cv::Mat(2*c_cnt,12,CV_64FC1);
-  A.setTo(0);
+ int img_cnt = c_cnt/proj_cnt;
 
-  //ROS_ERROR("Projection:");
-
-  // p_ cross H*p = 0
-  for (uint i=0; i<c_cnt; ++i){
-   pcl_Point   P = trafoed_corners.points.at(i);
-   cv::Point2f p = trafoed_px.at(i%proj_cnt);
-
-  //  ROS_INFO("from %f %f %f to %f %f", P.x,P.y,P.z,p.x,p.y);
+ ROS_WARN("Computing Projection matrix from %i images", img_cnt);
 
 
-   float f[12] = {0,0,0,0,-P.x,-P.y,-P.z,1,p.y*P.x,p.y*P.y,p.y*P.z,p.y};
-   for (uint j=0; j<12; ++j) A.at<double>(2*i,j) = f[j];
+ Cloud trafoed_corners;
+ vector<cv::Point2f> trafoed_px;
+ cv::Mat U,T;
 
-   float g[12] = {P.x,P.y,P.z,1,0,0,0,0,-p.x*P.x,-p.x*P.y,-p.x*P.z,-p.x};
-   for (uint j=0; j<12; ++j) A.at<double>(2*i+1,j) = g[j];
-  }
+ scaleCloud(observations_3d, U, trafoed_corners);
+ scalePixels(projector_corners, T, trafoed_px);
 
-  // now solve A*h == 0
-  // Solution is the singular vector with smallest singular value
+ cv::Mat A = cv::Mat(2*c_cnt,12,CV_64FC1);
+ A.setTo(0);
 
-  cv::Mat h = cv::Mat(12,1,CV_64FC1);
-  cv::SVD::solveZ(A,h);
+ //ROS_ERROR("Projection:");
 
-  proj_matrix = cv::Mat(3,4,CV_64FC1);
+ // p_ cross H*p = 0
+ for (uint i=0; i<c_cnt; ++i){
+  pcl_Point   P = trafoed_corners.points.at(i);
+  cv::Point2f p = trafoed_px.at(i%proj_cnt);
 
-  for (uint i=0; i<3; ++i){
-   for (uint j=0; j<4; ++j)
-    proj_matrix.at<double>(i,j) =  h.at<double>(4*i+j);
-  }
+  // ROS_INFO("from %f %f %f to %f %f", P.x,P.y,P.z,p.x,p.y);
 
-  // cout << "Tinv " << T.inv() << endl;
-  // cout << "U " << U << endl;
+  float f[12] = {0,0,0,0,-P.x,-P.y,-P.z,1,p.y*P.x,p.y*P.y,p.y*P.z,p.y};
+  for (uint j=0; j<12; ++j) A.at<double>(2*i,j) = f[j];
 
-  // undo scaling
-  proj_matrix = T.inv()*proj_matrix*U;
+  float g[12] = {P.x,P.y,P.z,1,0,0,0,0,-p.x*P.x,-p.x*P.y,-p.x*P.z,-p.x};
+  for (uint j=0; j<12; ++j) A.at<double>(2*i+1,j) = g[j];
+ }
+
+ // now solve A*h == 0
+ // Solution is the singular vector with smallest singular value
+
+ cv::Mat h = cv::Mat(12,1,CV_64FC1);
+ cv::SVD::solveZ(A,h);
+
+ proj_Matrix = cv::Mat(3,4,CV_64FC1);
+
+ for (uint i=0; i<3; ++i){
+  for (uint j=0; j<4; ++j)
+   proj_Matrix.at<double>(i,j) =  h.at<double>(4*i+j);
+ }
+
+ // cout << "Tinv " << T.inv() << endl;
+ // cout << "U " << U << endl;
+
+ // undo scaling
+ proj_Matrix = T.inv()*proj_Matrix*U;
 
 
  // cout << "Projection Matrix: " << endl <<  P << endl;
 
 
-  // compute reprojection error:
-  double total = 0;
-  double total_x = 0;
-  double total_y = 0;
+ // compute reprojection error:
+ double total = 0;
+ double total_x = 0;
+ double total_y = 0;
 
-  cv::Point2f px;
-
-
-
-  for (uint i=0; i<c_cnt; ++i){
-   //    ROS_INFO("projection %i", i);
-
-   pcl_Point   p = observations_3d.points.at(i);
-   cv::Point2f p_ = projector_corners.at(i%proj_cnt); //
-
-   applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_matrix,px);
-
-
-   // ROS_INFO("err: %f %f", (px.x-p_.x),(px.y-p_.y));
-
-   total_x += abs(px.x-p_.x)/c_cnt;
-   total_y += abs(px.y-p_.y)/c_cnt;
-   total += sqrt(pow(px.x-p_.x,2)+pow(px.y-p_.y,2))/c_cnt;
-
-  }
-
-  ROS_INFO("Projection Matrix: mean error: %f (x: %f, y: %f)", total, total_x, total_y);
-
-
-  // cout << "write" << endl << proj_Matrix << endl;
-  //  cv::FileStorage fs("data/projection_matrix.yml", cv::FileStorage::WRITE);
-  //  assert(fs.isOpened());
-  //  fs << "ProjectionMatrix" << proj_Matrix;
-  //  fs.release();
+ cv::Point2f px;
 
 
 
+ for (uint i=0; i<c_cnt; ++i){
+  //    ROS_INFO("projection %i", i);
+
+  pcl_Point   p = observations_3d.points.at(i);
+  cv::Point2f p_ = projector_corners.at(i%proj_cnt); //
+
+  applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_Matrix,px);
+
+
+  // ROS_INFO("err: %f %f", (px.x-p_.x),(px.y-p_.y));
+
+  total_x += abs(px.x-p_.x)/c_cnt;
+  total_y += abs(px.y-p_.y)/c_cnt;
+  total += sqrt(pow(px.x-p_.x,2)+pow(px.y-p_.y,2))/c_cnt;
+
+ }
+
+ ROS_INFO("Projection Matrix: mean error: %f (x: %f, y: %f)", total, total_x, total_y);
+
+
+ saveMat("Projection Matrix", proj_matrix_filename, proj_Matrix);
 }
-
-
-
 
 
 bool Projector_Calibrator::findCheckerboardCorners(){
@@ -326,18 +412,46 @@ bool Projector_Calibrator::findCheckerboardCorners(){
 
 bool Projector_Calibrator::storeCurrent3DObservations(){
 
- if (corners.size() == 0){ ROS_WARN("Can't add Observations since Corners havn't been detected"); return false;}
- assert(input_cloud.size() > 0);
+
+ if (!kinect_trafo_valid){
+  ROS_WARN("can't store Observations in global Frame since it is not defined!");
+  return false;
+ }
+
+ if (corners.size() == 0){
+  ROS_WARN("Can't add Observations since Corners havn't been detected");
+  return false;
+ }
+
+ if (input_cloud.size() == 0){
+  ROS_WARN("storeCurrent3DObservations: input_cloud.size() == 0");
+  return false;
+ }
+
+
  Cloud c_3d;
  for (uint i=0; i<corners.size(); ++i){
-   pcl_Point p = input_cloud.at(corners[i].x, corners[i].y);
-   if (!(p.x == p.x)){ROS_WARN("storeCurrent3DObservations: Found Corner without depth!"); return false;}
-   c_3d.points.push_back(p);
-  }
+  pcl_Point p = input_cloud.at(corners[i].x, corners[i].y);
+  if (!(p.x == p.x)){ROS_WARN("storeCurrent3DObservations: Found Corner without depth!"); return false;}
+  c_3d.points.push_back(p);
+  // ROS_INFO("new 3d point: %f %f %f", p.x, p.y,p.z);
+ }
  // transform from kinect-frame to wall-frame
+
+ // pcl_Point  p = c_3d.points[0];
+ // ROS_INFO("before: c_3d(0): %f %f %f", p.x,p.y,p.z);
+
  pcl::getTransformedPointCloud(c_3d, kinect_trafo, c_3d);
+
+ // p = c_3d.points[0];
+ // ROS_INFO("after: c_3d(0): %f %f %f", p.x,p.y,p.z);
+
  observations_3d.points.insert(observations_3d.points.end(),c_3d.points.begin(), c_3d.points.end());
  ROS_INFO("Added %zu points, now %zu 3D-Observations",c_3d.size(), observations_3d.size());
+
+ // p = observations_3d.points[0];
+ // ROS_INFO("Observations_3d(0): %f %f %f", p.x,p.y,p.z);
+
  return true;
 }
 
@@ -348,6 +462,8 @@ void Projector_Calibrator::computeKinectTransformation(){
  if (!kinect_orientation_valid){
   ROS_INFO("Can't compute KinectTrafo without Kinect's orientation angle"); return;
  }
+
+ ROS_INFO("Computing Kinect Trafo");
 
  Cloud filtered;
  applyMaskOnInputCloud(filtered);
@@ -368,13 +484,18 @@ void Projector_Calibrator::computeKinectTransformation(){
  Eigen::Vector3f pl_center = Eigen::Vector3f(p.x,p.y,p.z);
  Eigen::Vector3f pl_upwards = Eigen::Vector3f(p2.x-p.x,p2.y-p.y,p2.z-p.z);
 
- float plane_direction = 1;
- if (plane_model.head<3>()[2] < 0){ plane_direction  = -1; }
+// float plane_direction = 1;
+// if (plane_model.head<3>()[2] < 0){ plane_direction  = -1; }
+
+ float plane_direction = plane_model.head<3>()[2]>0?1:-1;
 
  pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
 
- //  saveMatrix(kinect_trafo,"data/kinect_trafo.txt");
- //  ROS_INFO("Wrote kinect_trafo to data/kinect_trafo.txt");
+
+ // save to file
+ char fn[100]; sprintf(fn, "data/%s.txt",kinect_trafo_filename.c_str());
+ saveMatrix(kinect_trafo,fn);
+ ROS_INFO("Wrote kinect_trafo to %s", fn);
 
  kinect_trafo_valid = true;
 
@@ -382,19 +503,28 @@ void Projector_Calibrator::computeKinectTransformation(){
 
 
 // TODO: assumption: only rectangular mask...
-void Projector_Calibrator::setMaskFromDetections(){
+void Projector_Calibrator::createMaskFromDetections(){
 
  if (corners.size() != uint(C_checkboard_size.width*C_checkboard_size.height)){
   ROS_INFO("can't create mask if the corners were not detected!"); return; }
 
- mask = cv::Mat(cv::Size(480,640), CV_8UC1);  mask.setTo(0);
+ mask = cv::Mat(cv::Size(640,480), CV_8UC1);  mask.setTo(0);
 
  int w = C_checkboard_size.width; int h = C_checkboard_size.height;
  int l = corners[1].x-corners[0].x; // length of a square
+
  float min_x = corners[0].x-l;    float min_y = corners[0].y-l;
  float max_x = corners[w*h-1].x+l; float max_y = corners[w*h-1].y+l;
- cv::rectangle(mask, cv::Point(min_x,min_y), cv::Point(max_x,max_y), CV_RGB(255,0,0),-1);
 
+ cv::rectangle(mask, cv::Point(min_x,min_y), cv::Point(max_x,max_y), CV_RGB(255,255,255),-1);
+
+ ROS_INFO("Writing kinect_mask to data/kinect_mask.png");
+ cv::imwrite("data/kinect_mask.png", mask);
+//
+//
+//  cv::namedWindow("Mask on Kinect Image");
+//  cv::imshow("Mask on Kinect Image", mask);
+//  cv::waitKey(-1);
 }
 
 
@@ -424,9 +554,11 @@ float Projector_Calibrator::fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f&
 
 
 void Projector_Calibrator::applyMaskOnInputCloud(Cloud& out){
- assert(mask_valid());
- for (int x=0; x<mask.rows; ++x)
-  for (int y=0; y<mask.cols; ++y){
+
+ assert(mask_valid() && int(input_cloud.width) == mask.cols);
+
+ for (int x=0; x<mask.cols; ++x)
+  for (int y=0; y<mask.rows; ++y){
    if (mask.at<uchar>(y,x) > 0){
     pcl_Point p = input_cloud.at(x,y);
     if (p.x == p.x) out.points.push_back(p);
