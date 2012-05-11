@@ -8,29 +8,15 @@
 
 
 #include <ros/ros.h>
-#include <image_transport/image_transport.h>
-#include <opencv/cv.h>
 #include <opencv/highgui.h>
-#include <opencv2/imgproc/imgproc.hpp>
 #include <cv_bridge/cv_bridge.h>
-#include <pcl_ros/point_cloud.h>
-#include <message_filters/time_synchronizer.h>
-#include <tf/transform_broadcaster.h>
-#include <pcl/io/pcd_io.h>
 
 #include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <sensor_msgs/Image.h>
 
+#include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/Imu.h>
-
-#include <pcl_ros/transforms.h>
-#include <pcl/ros/conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/common/transform.h>
 
 #include "type_definitions.h"
 #include "user_input.h"
@@ -227,61 +213,6 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
  }
 
-
-
- /*
-	// mark points close to the board
-	// #define MINMAX
-#ifdef MINMAX
-	float minz = 100;
-	float maxz = -100;
-#endif
-
-	for (uint i=0; i<trans.points.size(); ++i){
-		Point p = trans.points[i];
-#ifdef MINMAX
-		minz = min(minz,p.z);
-		maxz = max(maxz,p.z);
-#endif
-		if (p.z < 0.03 || p.z > 0.06) continue;
-
-		uint8_t r,g,b; r = g= b= 0;
-
-		if (p.z < 0.05){
-			g = 255;
-			// save point on plane
-			//			Vector2f px;
-			//			transformInPlaneCoordinates(cvPoint3D32f(p.x,p.y,p.z),px, pl_center, pl_upwards, pl_right);
-
-			CvPoint proj;
-			applyHomography(cvPoint2D32f(p.x,p.y),proj_Hom,proj);
-
-
-			//			ROS_INFO("pt: %f %f %f px: %f %f", p.x,p.y,p.z, px.x(), px.y());
-			ROS_INFO("projected to: %i %i", proj.x, proj.y);
-			cvCircle(projector_image, proj,20, CV_RGB(255,0,0),-1);
-			cvShowImage("board", projector_image);
-
-			break;
-
-
-		}
-		else
-			if (p.z < 0.06){
-				r = 255;
-			}
-
-		int32_t rgb = (r << 16) | (g << 8) | b;
-		trans.points[i].rgb =  *(float *)(&rgb);
-
-	}
-
-#ifdef MINMAX
-	printf("min,max %f %f \n", minz, maxz);
-#endif
-
-
-  */
 
 
 }
