@@ -93,6 +93,9 @@ class Projector_Calibrator {
 public:
 
 
+ bool projMatorHomSet(){return projMatrixSet() ||   homOpenCVSet() || homSVDSet();}
+
+
  Cloud* getTransformedCloud(){return &cloud_moved;}
 
  void initFromFile();
@@ -103,8 +106,8 @@ public:
  bool warpMatrixSet(){ return warp_matrix.cols > 0;}
 
 
- void setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size);
- void setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size);
+ bool setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size);
+ bool setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size);
 
 
  // save 3d positions (in wall-frame) of the last checkerboard detection

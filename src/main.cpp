@@ -158,10 +158,10 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   calibrator.storeCurrent3DObservations();
 
-  if (!calibrator.homOpenCVSet())
+  //if (!calibrator.homOpenCVSet())
    calibrator.computeHomography_SVD();
 
-  if (!calibrator.homSVDSet())
+  //if (!calibrator.homSVDSet())
    calibrator.computeHomography_OPENCV();
 
  }

@@ -125,15 +125,18 @@ void Projector_Calibrator::drawCheckerboard(cv::Mat& img, const cv::Size size, v
 
 
 // set wall_region to same ratio as image
-void Projector_Calibrator::setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size){
- setupImageProjection(width_m, width_m/img_size.width*img_size.height, off_x_m, off_y_m, img_size);
+bool Projector_Calibrator::setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size){
+ return setupImageProjection(width_m, width_m/img_size.width*img_size.height, off_x_m, off_y_m, img_size);
 }
 
 
-void Projector_Calibrator::setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size){
+bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size){
 
- cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
- px_to_world.setTo(0);
+
+ if(!projMatorHomSet()){
+  ROS_WARN("setupImageProjection: Neither Projection Matrix nor Homography computed!");
+  return false;
+ }
 
  int width_px  = img_size.width;
  int height_px = img_size.height;
@@ -145,8 +148,10 @@ void Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
  }
 
 
-
  if (projMatrixSet()){
+
+  cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
+  px_to_world.setTo(0);
 
   ROS_INFO("Computing warp from Projection Matrix!");
 
@@ -156,20 +161,37 @@ void Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
   px_to_world.at<double>(1,1) = height_m/height_px; // == width/width_px
   px_to_world.at<double>(1,2) = off_y_m;
 
-
   warp_matrix = proj_Matrix*px_to_world;
   warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
 
-  cout << "warp_matrix" << endl << warp_matrix << endl;
+  cout << "Warp_matrix: " << endl << warp_matrix << endl;
 
-  // TODO SAVE
-
+  return true;
  }
 
- // TODO also compute from homographies!
+ // Compute from Homography:
+ cv::Mat px_to_world(cv::Size(3,3), CV_64FC1);
+ px_to_world.setTo(0);
+
+ ROS_INFO("Computing warp from Homography!");
+
+ px_to_world.at<double>(2,2) = 1;
+ px_to_world.at<double>(0,0) = width_m/width_px;
+ px_to_world.at<double>(0,2) = off_x_m;
+ px_to_world.at<double>(1,1) = height_m/height_px; // == width/width_px
+ px_to_world.at<double>(1,2) = off_y_m;
+
+ if (homOpenCVSet())
+  warp_matrix = hom_CV*px_to_world;
+ else
+  warp_matrix = hom_SVD*px_to_world;
+
+ warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
+
+ cout << "Warp_matrix" << endl << warp_matrix << endl;
 
 
- return;
+ return true;
 
 }
 
