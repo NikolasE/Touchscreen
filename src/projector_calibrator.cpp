@@ -494,7 +494,6 @@ void Projector_Calibrator::computeProjectionMatrix(){
 
  ROS_INFO("Projection Matrix: mean error: %f (x: %f, y: %f)", total, total_x, total_y);
 
-
  saveMat("Projection Matrix", proj_matrix_filename, proj_Matrix);
 }
 
