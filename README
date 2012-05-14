@@ -1,5 +1,20 @@
 Kinect-Touchscreen
 
+
+
+Current State:
+Calibration from a single image, content of Main Screen is shown on Projector. 
+Size of screens has to be edited by hand, check main.cpp l. 53 and projector_calibrator.h l. 181
+
+
+
+
+
+
+
+
+
+
 see the imgs/ to see the current status!
 
 The goal of this project is to build a prototype for a large touchscreen 

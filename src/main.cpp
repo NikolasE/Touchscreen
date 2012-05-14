@@ -22,6 +22,7 @@
 #include "user_input.h"
 #include "projector_calibrator.h"
 
+#include <stdlib.h>
 
 ros::Publisher pub;
 ros::Publisher pub_full_moved;
@@ -40,8 +41,19 @@ Projector_Calibrator calibrator;
 vector<float> measured_angles;
 
 
+
 float kinect_tilt_angle_deg = 0;
 bool kinect_tilt_angle_valid = false;
+
+
+// uncomment to show testImage, otherwise content of Main screen is shown on projector
+//#define SHOW_TEST_IMAGE
+
+#ifndef SHOW_TEST_IMAGE
+cv::Size mainScreenSize(1920,1200);
+cv_RectF optimalRect;
+#endif
+
 
 ros::Subscriber sub_imu;
 
@@ -85,9 +97,8 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 
 
 
-void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
+void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
 
- // ROS_INFO("callback");
 
  // Kinect's orientation is needed to compute the transformation
  if (!calibrator.isKinectTrafoSet() && !calibrator.isKinectOrientationSet()){
@@ -115,11 +126,11 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   prog_state = GET_PROJECTION;
 
 
- if (prog_state == COLLECT_PATTERNS)
-  cout << "State: COLLECT_PATTERNS" << endl;
-
- if (prog_state == GET_PROJECTION)
-  cout << "State: GET_PROJECTION" << endl;
+// if (prog_state == COLLECT_PATTERNS)
+//  cout << "State: COLLECT_PATTERNS" << endl;
+//
+// if (prog_state == GET_PROJECTION)
+//  cout << "State: GET_PROJECTION" << endl;
 
 
  // look for corners
@@ -147,6 +158,13 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
   calibrator.setInputCloud(cloud);
   calibrator.computeKinectTransformation();
 
+#ifndef SHOW_TEST_IMAGE
+  optimalRect.width = 0;
+  if (!calibrator.findOptimalProjectionArea(mainScreenSize.width*1.0/mainScreenSize.height, optimalRect)){
+   ROS_ERROR("Could not find optimal Projection Area!");
+  }
+#endif
+
 
   prog_state = COLLECT_PATTERNS;
  }
@@ -156,13 +174,16 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
  // Cloud transformed_cloud;
  if (prog_state == COLLECT_PATTERNS){
 
+
+
+
   calibrator.storeCurrent3DObservations();
 
   //if (!calibrator.homOpenCVSet())
-   calibrator.computeHomography_SVD();
+  calibrator.computeHomography_SVD();
 
   //if (!calibrator.homSVDSet())
-   calibrator.computeHomography_OPENCV();
+  calibrator.computeHomography_OPENCV();
 
  }
 
@@ -186,19 +207,24 @@ void callback(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstP
 
   if (!calibrator.warpMatrixSet()){
 
+#ifdef SHOW_TEST_IMAGE
    float width = 0.8;
    float height = width/calibrator.getTestImg()->cols*calibrator.getTestImg()->rows; // use ratio of input-image
-
    float off_x = -width/2;
    float off_y = -height/2;
-
    calibrator.setupImageProjection(width,height,  off_x, off_y, calibrator.getTestImg()->size());
+#else
+   calibrator.setupImageProjection(optimalRect, mainScreenSize );
+#endif
+
   }
 
+#ifdef SHOW_TEST_IMAGE
   if (calibrator.warpMatrixSet()){
    calibrator.showUnWarpedImage(*calibrator.getTestImg());
-
   }
+#endif
+
  }
 
  if (calibrator.isKinectTrafoSet()){
@@ -236,12 +262,10 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 int main(int argc, char ** argv)
 {
 
+
  ros::init(argc, argv, "subscriber");
 
- //
  // calibrator.initFromFile();
- //
- // return 0;
 
  ros::NodeHandle nh;
  cv::namedWindow("camera", 1);
@@ -260,12 +284,38 @@ int main(int argc, char ** argv)
  message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
  message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
  Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
- sync.registerCallback(boost::bind(&callback, _1, _2));
+ sync.registerCallback(boost::bind(&imgCB, _1, _2));
 
 
 
- ros::spin();
- cvDestroyWindow("camera");
+
+ ros::Rate r(30);
+
+ while (ros::ok()){
+  ros::spinOnce();
+  r.sleep();
+
+#ifndef SHOW_TEST_IMAGE
+
+  if (calibrator.imageProjectionSet()){
+
+   //   cout << "warp " << endl << calibrator.warp_matrix << endl;
+   //
+   //   ROS_INFO("Streaming");
+   system("xwd -root | convert - /tmp/screenshot.jpg");
+   cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
+
+   cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
+
+   calibrator.showUnWarpedImage(primary_screen);
+  }
+#endif
+
+ }
+
+
+ // ros::spin();
+ cv::destroyAllWindows();
  return 0;
 
 }

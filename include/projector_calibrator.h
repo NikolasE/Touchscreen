@@ -17,6 +17,9 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <pcl/common/transform.h>
 
+typedef cv::Rect_<float> cv_RectF;
+
+
 class Projector_Calibrator {
 
 
@@ -32,8 +35,7 @@ class Projector_Calibrator {
  // a simple image for debugging
  cv::Mat test_img;
 
- // apply on image
- cv::Mat warp_matrix;
+
 
  // trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0
  // the first trafo is stored and used for all following frames
@@ -67,6 +69,8 @@ class Projector_Calibrator {
  // remove all point from the input cloud where mask!=255
  void applyMaskOnInputCloud(Cloud& out);
 
+
+
  // fit a plane into the pointcloud
  float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f& model);
 
@@ -89,8 +93,17 @@ class Projector_Calibrator {
  bool saveMat(const std::string name, const std::string filename, const cv::Mat& mat);
  bool loadMat(const std::string name, const std::string filename, cv::Mat& mat);
 
+ void getCheckerboardArea(std::vector<cv::Point2i>& pts);
+
+// cv::Rect optimalRect;
+
+
 
 public:
+ // apply on image
+ cv::Mat warp_matrix;
+
+ bool findOptimalProjectionArea(float ratio, cv_RectF& rect);
 
 
  bool projMatorHomSet(){return projMatrixSet() ||   homOpenCVSet() || homSVDSet();}
@@ -106,9 +119,12 @@ public:
  bool warpMatrixSet(){ return warp_matrix.cols > 0;}
 
 
+ bool setupImageProjection(const cv_RectF& wall_area, const cv::Size& img_size);
+
  bool setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size);
  bool setupImageProjection(float width_m, float off_x_m, float off_y_m, const cv::Size& img_size);
 
+ bool imageProjectionSet() { return warp_matrix.cols > 0; }
 
  // save 3d positions (in wall-frame) of the last checkerboard detection
  bool storeCurrent3DObservations();
@@ -161,7 +177,7 @@ void showFullscreenCheckerboard();
  Projector_Calibrator(){
   kinect_orientation_valid = false;
   kinect_trafo_valid = false;
-  C_checkboard_size = cv::Size(8,6);
+  C_checkboard_size = cv::Size(10,8);
   C_proj_size = cv::Size(1152,864);
 
   projector_image = cv::Mat(C_proj_size, CV_8UC3);

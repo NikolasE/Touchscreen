@@ -68,17 +68,6 @@ void Projector_Calibrator::initFromFile(){
 
 void Projector_Calibrator::drawCheckerboard(cv::Mat& img, const cv::Size size, vector<cv::Point2f>& corners_2d){
 
- // get region of checkerboard
- // float minx,maxx, miny, maxy;
- // minx = miny = 1e5; maxx = maxy = -1e5;
- // for (int i=0; i<mask->cols; ++i)
- //  for (int j=0; j<mask->rows; ++j){
- //   if (mask->at<uchar>(j,i) == 0) continue;
- //   minx = min(minx,i*1.f); miny = min(miny,j*1.f);
- //   maxx = max(maxx,i*1.f); maxy = max(maxy,j*1.f);
- //  }
-
-
  corners_2d.clear();
 
  // draw white border with this size
@@ -130,6 +119,17 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float off_x_m, fl
 }
 
 
+
+
+bool Projector_Calibrator::setupImageProjection(const cv_RectF& wall_area, const cv::Size& img_size){
+
+ if (wall_area.width == 0){
+  ROS_ERROR("setupImageProjection: wall area has width of 0!");
+  return false;
+ }
+ return setupImageProjection(wall_area.width, wall_area.height, wall_area.x, wall_area.y, img_size);
+}
+
 bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, float off_x_m, float off_y_m, const cv::Size& img_size){
 
 
@@ -153,7 +153,7 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
   cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
   px_to_world.setTo(0);
 
-  ROS_INFO("Computing warp from Projection Matrix!");
+//  ROS_INFO("Computing warp from Projection Matrix!");
 
   px_to_world.at<double>(3,2) = 1;
   px_to_world.at<double>(0,0) = width_m/width_px;
@@ -164,7 +164,7 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
   warp_matrix = proj_Matrix*px_to_world;
   warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
 
-  cout << "Warp_matrix: " << endl << warp_matrix << endl;
+//  cout << "Warp_matrix: " << endl << warp_matrix << endl;
 
   return true;
  }
@@ -173,7 +173,7 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
  cv::Mat px_to_world(cv::Size(3,3), CV_64FC1);
  px_to_world.setTo(0);
 
- ROS_INFO("Computing warp from Homography!");
+// ROS_INFO("Computing warp from Homography!");
 
  px_to_world.at<double>(2,2) = 1;
  px_to_world.at<double>(0,0) = width_m/width_px;
@@ -188,7 +188,7 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
 
  warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
 
- cout << "Warp_matrix" << endl << warp_matrix << endl;
+// cout << "Warp_matrix" << endl << warp_matrix << endl;
 
 
  return true;
@@ -209,11 +209,7 @@ void Projector_Calibrator::showUnWarpedImage(const cv::Mat& img){
  IplImage img_ipl = projector_image;
  cvShowImage("fullscreen_ipl", &img_ipl);
 
-
 }
-
-
-
 
 
 void Projector_Calibrator::computeHomography_OPENCV(){
@@ -251,7 +247,7 @@ void Projector_Calibrator::computeHomography_OPENCV(){
 #endif
 
 
- cout << "Homography with OpenCV: " << endl << hom_CV << endl;
+ // cout << "Homography with OpenCV: " << endl << hom_CV << endl;
 
  // compute error:
  float error = 0;
@@ -373,7 +369,7 @@ void Projector_Calibrator::computeHomography_SVD(){
  // 2d = H*3d H*(x,y,1)
 
 
- cout << "Homography with SVD: " << endl << hom_SVD << endl;
+//  cout << "Homography with SVD: " << endl << hom_SVD << endl;
 
 
  // compute error:
@@ -515,6 +511,8 @@ bool Projector_Calibrator::findCheckerboardCorners(){
   ROS_WARN("Could not find a checkerboard!");
   return false;
  }
+
+
  cv::cvtColor(input_image, gray, CV_BGR2GRAY);
  cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
  return true;
@@ -608,12 +606,158 @@ void Projector_Calibrator::computeKinectTransformation(){
  saveAffineTrafo(kinect_trafo,fn);
  ROS_INFO("Wrote kinect_trafo to %s", fn);
 
+
+ pcl::getTransformedPointCloud(input_cloud,kinect_trafo,cloud_moved);
+
  kinect_trafo_valid = true;
 
 }
 
 
-// TODO: assumption: only rectangular mask...
+
+void Projector_Calibrator::getCheckerboardArea(vector<cv::Point2i>& pts){
+
+ pts.clear();
+ if (corners.size() == 0){
+  ROS_WARN("getCheckerboardArea: no corners!"); return;
+ }
+
+
+ float l = (corners[1].x-corners[0].x);
+
+ cv::Point2i p = corners[0];
+ pts.push_back(cv::Point2i(p.x-l,p.y-l));
+
+ p = corners[C_checkboard_size.width-1];
+ pts.push_back(cv::Point2i(p.x+l,p.y-l));
+
+ p = corners[C_checkboard_size.height*C_checkboard_size.width-1];
+ pts.push_back(cv::Point2i(p.x+l,p.y+l));
+
+ p = corners[C_checkboard_size.width*(C_checkboard_size.height-1)];
+ pts.push_back(cv::Point2i(p.x-l,p.y+l));
+}
+
+
+
+bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect){
+
+ if(!kinect_trafo_valid){
+  ROS_WARN("findOptimalProjectionArea: no kinect trafo!"); return false;
+ }
+
+ if (corners.size() == 0){
+  ROS_WARN("findOptimalProjectionArea: no corners!"); return false;
+ }
+
+ if (cloud_moved.size() == 0){
+  ROS_WARN("findOptimalProjectionArea: no input cloud!"); return false;
+ }
+
+
+ vector<cv::Point2i> c;
+ getCheckerboardArea(c);
+// cv::fillConvexPoly(mask,c,CV_RGB(255,255,255));
+
+
+ // get 3d coordinates of corners in the wall-system
+ vector<cv::Point2f> rotated;
+ float min_x = 100;
+ float min_y = 100;
+ for (uint i=0; i<c.size(); ++i){
+  pcl_Point p = cloud_moved.at(c[i].x,c[i].y);
+  rotated.push_back(cv::Point2f(p.x,p.y));
+  min_x = min(min_x, p.x);
+  min_y = min(min_y, p.y);
+  // ROS_INFO("pre: %f %f", rotated[i].x, rotated[i].y);
+ }
+
+
+ vector<cv::Point2i> pt_i;
+ int max_x, max_y;
+ max_x = max_y = -1;
+ // ROS_INFO("min: %f %f", min_x, min_y);
+ for (uint i=0; i<c.size(); ++i){
+  rotated[i] = cv::Point2f((rotated[i].x-min_x)*100,(rotated[i].y-min_y)*100); // in cm <=> 1px
+  pt_i.push_back(cv::Point2i(rotated[i].x,rotated[i].y));
+  max_x = max(max_x, pt_i[i].x);
+  max_y = max(max_y, pt_i[i].y);
+  // ROS_INFO("post: %f %f", rotated[i].x, rotated[i].y);
+ }
+
+ cv::Mat search_img(max_y,max_x,CV_8UC1); search_img.setTo(0);
+ cv::fillConvexPoly(search_img,pt_i,CV_RGB(255,255,255));
+
+
+//#define SHOW_SEARCH_IMAGE
+
+#ifdef SHOW_SEARCH_IMAGE
+  cv::namedWindow("search_img",1);
+  cv::imshow("search_img", search_img);
+  cv::waitKey(10);
+#endif
+
+ // find largest rect in white area:
+
+ // ratio = width/height
+ bool finished = false;
+
+ float step = 0.03; // check every X m
+
+ float width, height; int x, y;
+ for (width = max_x; width > 0 && !finished; width -= step){ // check every 5 cm
+  height = width/ratio;
+
+  // ROS_INFO("Width: %f, height: %f", width, height);
+
+  // find fitting left upper corner (sliding window)
+  for (x = 0; x < max_x-width && !finished; x+= step*100){
+   for (y = 0; y < max_y-height; y+=step*100){
+    // ROS_INFO("Checking x = %i, y = %i", x, y);
+
+    int x_w = x+width; int y_w = y+height;
+    assert(x >= 0 && y >= 0 && x_w < search_img.cols && y< search_img.rows);
+    // check if all corners are withing white area:
+    if (search_img.at<uchar>(y,x) == 0) continue;
+    if (search_img.at<uchar>(y,x_w) == 0) continue;
+    if (search_img.at<uchar>(y_w,x_w) == 0) continue;
+    if (search_img.at<uchar>(y_w,x) == 0) continue;
+    // ROS_INFO("Found fitting pose (w,h: %f %f)", width, height);
+#ifdef SHOW_SEARCH_IMAGE
+    cv::rectangle(search_img, cv::Point(x,y), cv::Point(x_w, y_w), CV_RGB(125,125,125));
+#endif
+
+    finished = true; // break outer loops
+    break;
+   } // for y
+  } // for x
+ } // for width
+
+#ifdef SHOW_SEARCH_IMAGE
+   cv::imshow("search_img", search_img);
+   cv::waitKey(10);
+#endif
+
+ if (!finished) return false;
+
+ // restore pose in wall_frame
+ rect.width = width/100;
+ rect.height = height/100;
+
+ rect.x = x/100.0+min_x;
+ rect.y = y/100.0+min_y;
+
+ // show area on input image:
+
+//  ROS_INFO("Optimal rect: x,y: %f %f, w,h: %f %f", rect.x, rect.y, rect.width, rect.height);
+
+ return true;
+
+}
+
+
+
+
 void Projector_Calibrator::createMaskFromDetections(){
 
  if (corners.size() != uint(C_checkboard_size.width*C_checkboard_size.height)){
@@ -621,21 +765,24 @@ void Projector_Calibrator::createMaskFromDetections(){
 
  mask = cv::Mat(cv::Size(640,480), CV_8UC1);  mask.setTo(0);
 
- int w = C_checkboard_size.width; int h = C_checkboard_size.height;
- int l = corners[1].x-corners[0].x; // length of a square
+ vector<cv::Point2i> c;
+ getCheckerboardArea(c);
 
- float min_x = corners[0].x-l;    float min_y = corners[0].y-l;
- float max_x = corners[w*h-1].x+l; float max_y = corners[w*h-1].y+l;
+ //  for (uint i=0; i<c.size(); ++i){
+ //   cv::circle(mask, c[i] ,10,CV_RGB(255,255,255));
+ //   ROS_INFO("%i %i", c[i].x, c[i].y);
+ //  }
 
- cv::rectangle(mask, cv::Point(min_x,min_y), cv::Point(max_x,max_y), CV_RGB(255,255,255),-1);
+ cv::fillConvexPoly(mask,c,CV_RGB(255,255,255));
+
 
  ROS_INFO("Writing kinect_mask to data/kinect_mask.png");
  cv::imwrite("data/kinect_mask.png", mask);
  //
  //
- //  cv::namedWindow("Mask on Kinect Image");
- //  cv::imshow("Mask on Kinect Image", mask);
- //  cv::waitKey(-1);
+ //   cv::namedWindow("Mask on Kinect Image");
+ //   cv::imshow("Mask on Kinect Image", mask);
+ //   cv::waitKey(-1);
 }
 
 
