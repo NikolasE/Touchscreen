@@ -177,8 +177,10 @@ void showFullscreenCheckerboard();
  Projector_Calibrator(){
   kinect_orientation_valid = false;
   kinect_trafo_valid = false;
-  C_checkboard_size = cv::Size(10,8);
-  C_proj_size = cv::Size(1152,864);
+  C_checkboard_size = cv::Size(10,6);
+
+  C_proj_size = cv::Size(1024,768);
+
 
   projector_image = cv::Mat(C_proj_size, CV_8UC3);
 

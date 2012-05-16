@@ -93,7 +93,6 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
  double s = sqrt(3)/d;
 
 
-
  U = cv::Mat::eye(4,4,CV_64FC1); U*=s;  U.at<double>(3,3) = 1;
  for (int i=0; i<3; ++i)
   U.at<double>(i,3) = -mu[i]*s;

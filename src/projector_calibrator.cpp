@@ -147,51 +147,52 @@ bool Projector_Calibrator::setupImageProjection(float width_m, float height_m, f
   ROS_WARN("setupImageProjection: Image and wall-section have different ratios!");
  }
 
+ if (homOpenCVSet() || homSVDSet()){
 
- if (projMatrixSet()){
-
-  cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
+  // Compute from Homography:
+  cv::Mat px_to_world(cv::Size(3,3), CV_64FC1);
   px_to_world.setTo(0);
 
-//  ROS_INFO("Computing warp from Projection Matrix!");
+  // ROS_INFO("Computing warp from Homography!");
 
-  px_to_world.at<double>(3,2) = 1;
+  px_to_world.at<double>(2,2) = 1;
   px_to_world.at<double>(0,0) = width_m/width_px;
   px_to_world.at<double>(0,2) = off_x_m;
   px_to_world.at<double>(1,1) = height_m/height_px; // == width/width_px
   px_to_world.at<double>(1,2) = off_y_m;
 
-  warp_matrix = proj_Matrix*px_to_world;
+  if (homOpenCVSet())
+   warp_matrix = hom_CV*px_to_world;
+  else
+   warp_matrix = hom_SVD*px_to_world;
+
   warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
 
-//  cout << "Warp_matrix: " << endl << warp_matrix << endl;
+  // cout << "Warp_matrix" << endl << warp_matrix << endl;
 
   return true;
+
  }
 
- // Compute from Homography:
- cv::Mat px_to_world(cv::Size(3,3), CV_64FC1);
+ cv::Mat px_to_world(cv::Size(3,4), CV_64FC1);
  px_to_world.setTo(0);
 
-// ROS_INFO("Computing warp from Homography!");
+ //  ROS_INFO("Computing warp from Projection Matrix!");
 
- px_to_world.at<double>(2,2) = 1;
+ px_to_world.at<double>(3,2) = 1;
  px_to_world.at<double>(0,0) = width_m/width_px;
  px_to_world.at<double>(0,2) = off_x_m;
  px_to_world.at<double>(1,1) = height_m/height_px; // == width/width_px
  px_to_world.at<double>(1,2) = off_y_m;
 
- if (homOpenCVSet())
-  warp_matrix = hom_CV*px_to_world;
- else
-  warp_matrix = hom_SVD*px_to_world;
-
+ warp_matrix = proj_Matrix*px_to_world;
  warp_matrix /= warp_matrix.at<double>(2,2); // defined up to scale
 
-// cout << "Warp_matrix" << endl << warp_matrix << endl;
-
+ //  cout << "Warp_matrix: " << endl << warp_matrix << endl;
 
  return true;
+
+
 
 }
 
@@ -205,7 +206,13 @@ void Projector_Calibrator::showUnWarpedImage(const cv::Mat& img){
  projector_image.setTo(0);
 
  cv::Size size(projector_image.cols, projector_image.rows);
+
  cv::warpPerspective(img, projector_image, warp_matrix, size, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+
+ // TODO: remove numbers
+ cv::rectangle(projector_image, cv::Point(0,0),cv::Point(projector_image.cols-10,projector_image.rows-10), CV_RGB(255,0,0), 10);
+
+
  IplImage img_ipl = projector_image;
  cvShowImage("fullscreen_ipl", &img_ipl);
 
@@ -213,6 +220,7 @@ void Projector_Calibrator::showUnWarpedImage(const cv::Mat& img){
 
 
 void Projector_Calibrator::computeHomography_OPENCV(){
+#define DO_SCALING
 
  ROS_WARN("COMPUTING HOMOGRAPHY WITH openCV");
 
@@ -233,7 +241,6 @@ void Projector_Calibrator::computeHomography_OPENCV(){
 
  // 2d = H*3d H*(x,y,1)
 
-#define DO_SCALING
 
 #ifdef DO_SCALING
  cv::Mat T,U;
@@ -279,6 +286,7 @@ void Projector_Calibrator::computeHomography_OPENCV(){
 
 
 void Projector_Calibrator::computeHomography_SVD(){
+#define SCALE_SVD
 
  ROS_WARN("COMPUTING HOMOGRAPHY WITH SVD");
 
@@ -297,7 +305,7 @@ void Projector_Calibrator::computeHomography_SVD(){
  // cv::Mat src(2,N,CV_32FC1);
  // cv::Mat dst(2,N,CV_32FC1);
 
-#define SCALE_SVD
+
 
 
 #ifdef SCALE_SVD
@@ -369,7 +377,7 @@ void Projector_Calibrator::computeHomography_SVD(){
  // 2d = H*3d H*(x,y,1)
 
 
-//  cout << "Homography with SVD: " << endl << hom_SVD << endl;
+ //  cout << "Homography with SVD: " << endl << hom_SVD << endl;
 
 
  // compute error:
@@ -415,6 +423,7 @@ void Projector_Calibrator::computeProjectionMatrix(){
  int img_cnt = c_cnt/proj_cnt;
 
  ROS_WARN("Computing Projection matrix from %i images", img_cnt);
+
 
 
  Cloud trafoed_corners;
@@ -499,21 +508,30 @@ void Projector_Calibrator::computeProjectionMatrix(){
 
 
 bool Projector_Calibrator::findCheckerboardCorners(){
+ // #define SHOW_DETECTIONS
+
  corners.clear();
  if (input_image.rows == 0){  ROS_WARN("can't find corners on empty image!"); return false;  }
 
- // cv::namedWindow("search",1);
- // cv::imshow("search", input_image);
- // cv::waitKey(-1);
 
  if (!cv::findChessboardCorners(input_image, C_checkboard_size,corners, CV_CALIB_CB_ADAPTIVE_THRESH)) {
   ROS_WARN("Could not find a checkerboard!");
   return false;
  }
 
-
  cv::cvtColor(input_image, gray, CV_BGR2GRAY);
  cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+
+
+#ifdef SHOW_DETECTIONS
+ cv::Mat cpy = input_image.clone();
+ cv::drawChessboardCorners(cpy, C_checkboard_size, corners, true);
+ cv::namedWindow("search",1); cv::imshow("search", cpy);
+ cv::waitKey(-1);
+#endif
+
+
+
  return true;
 }
 
@@ -623,23 +641,29 @@ void Projector_Calibrator::getCheckerboardArea(vector<cv::Point2i>& pts){
 
 
  float l = (corners[1].x-corners[0].x);
+ float h = (corners[C_checkboard_size.width+1].y-corners[0].y);
+
 
  cv::Point2i p = corners[0];
- pts.push_back(cv::Point2i(p.x-l,p.y-l));
+ pts.push_back(cv::Point2i(p.x-l,p.y-h));
 
  p = corners[C_checkboard_size.width-1];
- pts.push_back(cv::Point2i(p.x+l,p.y-l));
+ pts.push_back(cv::Point2i(p.x+l,p.y-h));
 
  p = corners[C_checkboard_size.height*C_checkboard_size.width-1];
- pts.push_back(cv::Point2i(p.x+l,p.y+l));
+ pts.push_back(cv::Point2i(p.x+l,p.y+h));
 
  p = corners[C_checkboard_size.width*(C_checkboard_size.height-1)];
- pts.push_back(cv::Point2i(p.x-l,p.y+l));
+ pts.push_back(cv::Point2i(p.x-l,p.y+h));
+
+
+ assert(pts.size() == 4);
 }
 
 
 
 bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect){
+ //#define SHOW_SEARCH_IMAGE
 
  if(!kinect_trafo_valid){
   ROS_WARN("findOptimalProjectionArea: no kinect trafo!"); return false;
@@ -656,7 +680,6 @@ bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect
 
  vector<cv::Point2i> c;
  getCheckerboardArea(c);
-// cv::fillConvexPoly(mask,c,CV_RGB(255,255,255));
 
 
  // get 3d coordinates of corners in the wall-system
@@ -688,12 +711,10 @@ bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect
  cv::fillConvexPoly(search_img,pt_i,CV_RGB(255,255,255));
 
 
-//#define SHOW_SEARCH_IMAGE
-
 #ifdef SHOW_SEARCH_IMAGE
-  cv::namedWindow("search_img",1);
-  cv::imshow("search_img", search_img);
-  cv::waitKey(10);
+ cv::namedWindow("search_img",1);
+ cv::imshow("search_img", search_img);
+ cv::waitKey(10);
 #endif
 
  // find largest rect in white area:
@@ -733,8 +754,8 @@ bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect
  } // for width
 
 #ifdef SHOW_SEARCH_IMAGE
-   cv::imshow("search_img", search_img);
-   cv::waitKey(10);
+ cv::imshow("search_img", search_img);
+ cv::waitKey(10);
 #endif
 
  if (!finished) return false;
@@ -748,7 +769,7 @@ bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect
 
  // show area on input image:
 
-//  ROS_INFO("Optimal rect: x,y: %f %f, w,h: %f %f", rect.x, rect.y, rect.width, rect.height);
+ //  ROS_INFO("Optimal rect: x,y: %f %f, w,h: %f %f", rect.x, rect.y, rect.width, rect.height);
 
  return true;
 
@@ -758,6 +779,7 @@ bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect
 
 
 void Projector_Calibrator::createMaskFromDetections(){
+ // #define SHOW_MASK_IMAGE
 
  if (corners.size() != uint(C_checkboard_size.width*C_checkboard_size.height)){
   ROS_INFO("can't create mask if the corners were not detected!"); return; }
@@ -767,21 +789,26 @@ void Projector_Calibrator::createMaskFromDetections(){
  vector<cv::Point2i> c;
  getCheckerboardArea(c);
 
- //  for (uint i=0; i<c.size(); ++i){
- //   cv::circle(mask, c[i] ,10,CV_RGB(255,255,255));
- //   ROS_INFO("%i %i", c[i].x, c[i].y);
- //  }
 
  cv::fillConvexPoly(mask,c,CV_RGB(255,255,255));
 
-
  ROS_INFO("Writing kinect_mask to data/kinect_mask.png");
  cv::imwrite("data/kinect_mask.png", mask);
- //
- //
- //   cv::namedWindow("Mask on Kinect Image");
- //   cv::imshow("Mask on Kinect Image", mask);
- //   cv::waitKey(-1);
+
+
+#ifdef SHOW_MASK_IMAGE
+ cv::Mat cpy = input_image.clone();
+
+ for (uint i=0; i<c.size(); ++i){
+  cv::circle(cpy, c[i] ,10,CV_RGB(255,0,0));
+  ROS_INFO("%i %i", c[i].x, c[i].y);
+ }
+
+ cv::namedWindow("Mask on Kinect Image");
+ cv::imshow("Mask on Kinect Image", cpy);
+ cv::waitKey(-1);
+
+#endif
 }
 
 
