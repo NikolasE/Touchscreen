@@ -20,7 +20,6 @@
 
 
 
-
 struct Mesh_visualizer {
 
  ros::NodeHandle nh_;
@@ -36,6 +35,7 @@ struct Mesh_visualizer {
  void visualizeMeshLines(const Cloud& cloud, const pcl::PolygonMesh& mesh);
 
 
+ pcl::PolygonMesh createMesh(const Cloud& cloud);
 
 
 

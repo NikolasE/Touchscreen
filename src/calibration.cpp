@@ -149,6 +149,10 @@ cv::Point2f applyPerspectiveTrafo(const cv::Point3f& p,const cv::Mat& P){
  return px;
 }
 
+cv::Point2f applyPerspectiveTrafo(const pcl_Point& p, const cv::Mat& P){
+ cv::Point3f p3; p3.x = p.x; p3.y = p.y; p3.z = p.z;
+ return applyPerspectiveTrafo(p3,P);
+}
 
 void applyHomography(const cv::Point2f& p,const cv::Mat& H, cv::Point2f& p_){
 

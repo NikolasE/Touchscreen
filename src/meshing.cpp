@@ -7,6 +7,28 @@
 
 #include "meshing.h"
 
+pcl::PolygonMesh Mesh_visualizer::createMesh(const Cloud& cloud){
+
+
+ pcl::PolygonMesh mesh;
+ if (cloud.size() == 0) return mesh;
+
+ pcl::OrganizedFastMesh<pcl_Point> mesher;
+
+ Cloud clone = cloud;
+
+ mesher.setInputCloud(clone.makeShared());
+
+
+// std::vector<pcl::Vertices>& polygons
+
+ ROS_INFO("reconstruct started");
+ ROS_INFO("%i %i", cloud.height, cloud.width);
+
+ assert(cloud.isOrganized());
+ mesher.reconstruct(mesh);
+ ROS_INFO("Mesh has %zu triangles",mesh.polygons.size());
+}
 
 
 void Mesh_visualizer::visualizeMeshLines(const Cloud& cloud, const pcl::PolygonMesh& mesh){

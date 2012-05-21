@@ -15,6 +15,7 @@
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
 #include <pcl/common/transform.h>
 
 typedef cv::Rect_<float> cv_RectF;
@@ -22,19 +23,13 @@ typedef cv::Rect_<float> cv_RectF;
 
 class Projector_Calibrator {
 
-
  // number of inner corners of the board
  cv::Size C_checkboard_size;
 
  cv::Size C_proj_size; // size of the projector image in pixels
 
  // The projection matrix of the projector and the homographies computed via OpenCV and SVD
- cv::Mat proj_Matrix, hom_CV, hom_SVD;
-
-
- // a simple image for debugging
- cv::Mat test_img;
-
+ cv::Mat  hom_CV, hom_SVD;
 
 
  // trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0
@@ -49,15 +44,11 @@ class Projector_Calibrator {
  // its 8UC1, with board: 255, rest: 0
  cv::Mat mask;
 
- // image to be shown by the projector
- cv::Mat projector_image;
 
 
  // point cloud from kinect (still in kinect frame)
  Cloud input_cloud;
 
- // point cloud in wall-frame
- Cloud cloud_moved;
 
  // tilt of kinect (rotation around optical axis)
  float kinect_tilt_angle_deg;
@@ -74,9 +65,6 @@ class Projector_Calibrator {
  // fit a plane into the pointcloud
  float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f& model);
 
- // list of 3d-observations (in the wall-frame) of the checkerboard corners
- // length is a multiple of the number of checkerboardcorners
- Cloud observations_3d;
 
 
 
@@ -95,11 +83,32 @@ class Projector_Calibrator {
 
  void getCheckerboardArea(std::vector<cv::Point2i>& pts);
 
-// cv::Rect optimalRect;
-
-
 
 public:
+
+ // list of 3d-observations (in the wall-frame) of the checkerboard corners
+ // length is a multiple of the number of checkerboardcorners
+ Cloud observations_3d;
+
+
+
+ void publish3DPoints();
+
+
+ // should be private
+ // point cloud in wall-frame
+ Cloud cloud_moved;
+ cv::Mat proj_Matrix;
+ // image to be shown by the projector
+ cv::Mat projector_image;
+
+
+
+ // a simple image for debugging
+ cv::Mat test_img;
+
+
+
  // apply on image
  cv::Mat warp_matrix;
 
@@ -117,7 +126,17 @@ public:
  bool homOpenCVSet(){ return hom_CV.cols > 0;}
  bool homSVDSet(){ return hom_SVD.cols > 0;}
  bool warpMatrixSet(){ return warp_matrix.cols > 0;}
-
+ //   if (calibrator.imageProjectionSet()){
+ //#ifdef SHOW_TEST_IMAGE
+ //    calibrator.showUnWarpedImage(calibrator.test_img);
+ //#else
+ //    system("xwd -root | convert - /tmp/screenshot.jpg");
+ //    cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
+ //    cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
+ //    calibrator.showUnWarpedImage(primary_screen);
+ //
+ //#endif
+ //   }
 
  bool setupImageProjection(const cv_RectF& wall_area, const cv::Size& img_size);
 
@@ -172,6 +191,9 @@ public:
  void computeHomography_SVD();
 
 void showFullscreenCheckerboard();
+
+
+Cloud visualizePointCloud();
 
 
  Projector_Calibrator(){

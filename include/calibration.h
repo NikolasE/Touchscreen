@@ -17,6 +17,7 @@ void applyHomography(const cv::Point2f& p,const cv::Mat& H, cv::Point2f& p_);
 void applyPerspectiveTrafo(const cv::Point3f& p,const cv::Mat& P, cv::Point2f& p_);
 cv::Point2f applyPerspectiveTrafo(const cv::Point3f& p,const cv::Mat& P);
 
+cv::Point2f applyPerspectiveTrafo(const pcl_Point& p, const cv::Mat& P);
 
 void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed);
 void scalePixels(const std::vector<cv::Point2f>& pxs,cv::Mat& T, std::vector<cv::Point2f>& transformed);
