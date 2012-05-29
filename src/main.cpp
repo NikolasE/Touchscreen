@@ -276,7 +276,7 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
  }
 
- void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
+void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 
   if (!calibrator.isKinectOrientationSet()) {
 

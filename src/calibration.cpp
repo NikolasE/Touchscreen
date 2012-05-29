@@ -173,7 +173,7 @@ void applyHomography(const cv::Point2f& p,const cv::Mat& H, cv::Point2f& p_){
 
 void saveAffineTrafo(const Eigen::Affine3f& M, const char* filename){
   ofstream off(filename);
-  assert(off.is_open());
+  if (off.is_open()){ ROS_WARN("Could not write to %s", filename); return;}
   for (uint i=0;i<4; ++i){
     for (uint j=0;j<4; ++j)
       off << M(i,j) << " ";

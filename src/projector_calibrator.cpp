@@ -562,7 +562,7 @@ bool Projector_Calibrator::storeCurrent3DObservations(){
   pcl_Point p = input_cloud.at(corners[i].x, corners[i].y);
   if (!(p.x == p.x)){ROS_WARN("storeCurrent3DObservations: Found Corner without depth!"); return false;}
   c_3d.points.push_back(p);
-  ROS_INFO("new 3d point (kinect frame): %f %f %f", p.x, p.y,p.z);
+  // ROS_INFO("new 3d point (kinect frame): %f %f %f", p.x, p.y,p.z);
  }
  // transform from kinect-frame to wall-frame
 
@@ -667,7 +667,32 @@ Cloud Projector_Calibrator::visualizePointCloud(){
 
 
 
- void Projector_Calibrator::computeKinectTransformation(){
+void computeTransformationFromVectorsAndOrigin(const Eigen::Vector3f& y_direction, const Eigen::Vector3f& z_axis,
+                                                  const Eigen::Vector3f& origin, Eigen::Affine3f& transformation){
+
+ Eigen::Vector3f x = (y_direction.cross(z_axis)).normalized();
+ Eigen::Vector3f y = y_direction.normalized();
+ Eigen::Vector3f z = z_axis.normalized();
+
+ Eigen::Affine3f sub = Eigen::Affine3f::Identity();
+ sub(0,3) = -origin[0];
+ sub(1,3) = -origin[1];
+ sub(2,3) = -origin[2];
+
+
+
+ transformation = Eigen::Affine3f::Identity();
+ transformation(0,0)=x[0]; transformation(0,1)=x[1]; transformation(0,2)=x[2]; // x^t
+ transformation(1,0)=y[0]; transformation(1,1)=y[1]; transformation(1,2)=y[2]; // y^t
+ transformation(2,0)=z[0]; transformation(2,1)=z[1]; transformation(2,2)=z[2]; // z^t
+
+ transformation = transformation*sub;
+}
+
+
+
+
+void Projector_Calibrator::computeKinectTransformation(){
 
   if (!kinect_orientation_valid){
    ROS_INFO("Can't compute KinectTrafo without Kinect's orientation angle"); return;
@@ -694,12 +719,12 @@ Cloud Projector_Calibrator::visualizePointCloud(){
   Eigen::Vector3f pl_center = Eigen::Vector3f(p.x,p.y,p.z);
   Eigen::Vector3f pl_upwards = Eigen::Vector3f(p2.x-p.x,p2.y-p.y,p2.z-p.z);
 
-  // float plane_direction = 1;
-  // if (plane_model.head<3>()[2] < 0){ plane_direction  = -1; }
-
   float plane_direction = plane_model.head<3>()[2]>0?1:-1;
 
-  pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
+  // compute trafo without pcl
+  computeTransformationFromVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center,kinect_trafo);
+  // PCL alternative
+  //pcl::getTransformationFromTwoUnitVectorsAndOrigin(-pl_upwards,plane_direction*plane_model.head<3>(), pl_center, kinect_trafo);
 
 
   // save to file
@@ -707,9 +732,7 @@ Cloud Projector_Calibrator::visualizePointCloud(){
   saveAffineTrafo(kinect_trafo,fn);
   ROS_INFO("Wrote kinect_trafo to %s", fn);
 
-
   pcl::getTransformedPointCloud(input_cloud,kinect_trafo,cloud_moved);
-
   kinect_trafo_valid = true;
 
  }
