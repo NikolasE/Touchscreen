@@ -23,8 +23,10 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed);
 void scalePixels(const std::vector<cv::Point2f>& pxs,cv::Mat& T, std::vector<cv::Point2f>& transformed);
 
 
-void saveAffineTrafo(const Eigen::Affine3f& M, const char* filename);
+bool saveAffineTrafo(const Eigen::Affine3f& M, const char* filename);
 bool loadAffineTrafo(Eigen::Affine3f& M, const char* filename);
+
+void printTrafo(const Eigen::Affine3f& M);
 
 
 #endif /* CALIBRATION_H_ */

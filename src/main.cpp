@@ -19,8 +19,8 @@
 #include <sensor_msgs/Imu.h>
 
 #include "type_definitions.h"
-#include "user_input.h"
 #include "projector_calibrator.h"
+#include "user_input.h"
 #include "meshing.h"
 
 #include <stdlib.h>
@@ -45,6 +45,7 @@ Projector_Calibrator calibrator;
 
 vector<float> measured_angles;
 
+User_Input user_input;
 
 
 float kinect_tilt_angle_deg = 0;
@@ -76,28 +77,28 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 
 
 
-  if (event != CV_EVENT_LBUTTONUP) return;
+ if (event != CV_EVENT_LBUTTONUP) return;
 
-  if (!calibrator.projMatrixSet()) return;
+ if (!calibrator.projMatrixSet()) return;
 
-  Cloud* cloud = (Cloud*)param;
+ Cloud* cloud = (Cloud*)param;
 
-  // get 3d point at this position
-  pcl_Point p = cloud->at(x,y);
+ // get 3d point at this position
+ pcl_Point p = cloud->at(x,y);
 
-  if (p.z != p.z) {ROS_WARN("Point has no depth!"); return;}
+ if (p.z != p.z) {ROS_WARN("Point has no depth!"); return;}
  // if (abs(p.z) > 0.1) {ROS_WARN("Point is not in plane! (%.0f cm)",abs(100*p.z)); }
 
-  cv::Point2f proj;
-  applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
+ cv::Point2f proj;
+ applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
 
-  // ROS_INFO("PX: %i %i", x,y);
-  // ROS_INFO("3d: %f %f %f", p.x,p.y,p.z);
-  // ROS_INFO("projected: %f %f", proj.x, proj.y);
+ // ROS_INFO("PX: %i %i", x,y);
+ // ROS_INFO("3d: %f %f %f", p.x,p.y,p.z);
+ // ROS_INFO("projected: %f %f", proj.x, proj.y);
 
-  cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
-  IplImage img_ipl = calibrator.projector_image;
-  cvShowImage("fullscreen_ipl", &img_ipl);
+ cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
+ IplImage img_ipl = calibrator.projector_image;
+ cvShowImage("fullscreen_ipl", &img_ipl);
 
 }
 
@@ -117,8 +118,7 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
  calibrator.setInputImage(cv_ptr->image);
 
  cv::imshow("camera", cv_ptr->image);
-
- cv::waitKey(10);
+ // cv::waitKey(10);
 
  // Kinect's orientation is needed to compute the transformation
  if (!calibrator.isKinectTrafoSet() && !calibrator.isKinectOrientationSet()){
@@ -126,6 +126,30 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
   return;
  }
 
+
+ // find user input and draw on Testimage
+ if (calibrator.isKinectOrientationSet()){
+
+  // find hand of user
+  user_input.setCloud(calibrator.cloud_moved);
+
+  // project finger into image
+  if (user_input.finger_found){
+   pcl_Point p = user_input.fingertip;
+
+   cv::Point2f proj;
+   if (calibrator.projMatrixSet())
+     applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
+
+   if (calibrator.homOpenCVSet())
+     applyHomography(cv::Point2f(p.x,p.y), calibrator.hom_CV, proj);
+
+   cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
+   IplImage img_ipl = calibrator.projector_image;
+   cvShowImage("fullscreen_ipl", &img_ipl);
+  }
+
+ }
 
 
 
@@ -169,30 +193,34 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
   if (!calibrator.mask_valid()){ ROS_INFO("No depth mask!"); return; }
 
-
   calibrator.computeKinectTransformation();
+
+  // store area of checkerboard in the user-interface
+  calibrator.getCheckerboardArea(user_input.checkerboard_area);
 
 
   calibrator.setInputCloud(cloud);// apply trafo on input cloud
 
+  prog_state = COLLECT_PATTERNS;
+ }
 
-  optimalRect.width = 0;
+
+
+ //  calibrator.setInputCloud(cloud);
+ if (optimalRect.width == 0 && calibrator.isKinectTrafoSet()){
+  ROS_INFO("Computing optimal area!");
+
 #ifdef SHOW_TEST_IMAGE
+
+  assert(calibrator.test_img.rows>0);
+
   if (!calibrator.findOptimalProjectionArea(calibrator.test_img.cols*1.0/calibrator.test_img.rows, optimalRect)){
 #else
    if (!calibrator.findOptimalProjectionArea(mainScreenSize.width*1.0/mainScreenSize.height, optimalRect)){
 #endif
     ROS_ERROR("Could not find optimal Projection Area!");
    }
-
-
-
-   prog_state = COLLECT_PATTERNS;
   }
-
-
-//  calibrator.setInputCloud(cloud);
-
 
 
   // Cloud transformed_cloud;
@@ -229,6 +257,12 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
    prog_state = COLLECT_PATTERNS;
 
   }
+
+
+
+
+
+
 
   if (calibrator.projMatrixSet()){
 
@@ -276,7 +310,7 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
  }
 
-void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
+ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 
   if (!calibrator.isKinectOrientationSet()) {
 
@@ -287,7 +321,9 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 
    if (measured_angles.size() == 200){
     kinect_tilt_angle_deg = 0;
+
     for (uint i=0; i<measured_angles.size(); ++i) kinect_tilt_angle_deg += measured_angles[i]/measured_angles.size();
+
     ROS_INFO("Set kinect orientation to %.1f deg", kinect_tilt_angle_deg);
     kinect_tilt_angle_valid = true;
     calibrator.setKinectOrientation(kinect_tilt_angle_deg);
@@ -301,14 +337,14 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
  {
 
 
-  ROS_INFO("Hallo welt");
 
   ros::init(argc, argv, "subscriber");
 
   calibrator.initFromFile();
 
   Mesh_visualizer meshing;
-
+  user_input.init();
+  user_input.calibrator = &calibrator;
 
   ros::NodeHandle nh;
   cv::namedWindow("camera", 1);
@@ -331,38 +367,47 @@ void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
   Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
   sync.registerCallback(boost::bind(&imgCB, _1, _2));
 
+  optimalRect.width = 0;
+
   ros::Rate r(10);
+
+
 
   while (ros::ok()){
    ros::spinOnce();
    r.sleep();
 
-   if (calibrator.projMatrixSet()){
-    Cloud c = calibrator.visualizePointCloud();
-    Cloud::Ptr msg = c.makeShared();
-    msg->header.frame_id = "/openni_rgb_optical_frame";
-    msg->header.stamp = ros::Time::now ();
-    pub_colored.publish(msg);
+
+
+
+
+
+   //   if (calibrator.projMatrixSet()){
+   //    Cloud c = calibrator.visualizePointCloud();
+   //    Cloud::Ptr msg = c.makeShared();
+   //    msg->header.frame_id = "/openni_rgb_optical_frame";
+   //    msg->header.stamp = ros::Time::now ();
+   //    pub_colored.publish(msg);
+   //   }
+
+
+   //   ROS_INFO("Mesh start");
+   //   pcl::PolygonMesh mesh = meshing.createMesh(calibrator.cloud_moved);
+   //
+   //   meshing.visualizeMesh(calibrator.cloud_moved, mesh);
+
+
+   if (calibrator.imageProjectionSet()){
+#ifdef SHOW_TEST_IMAGE
+    calibrator.showUnWarpedImage(calibrator.test_img);
+#else
+    system("xwd -root | convert - /tmp/screenshot.jpg");
+    cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
+    cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
+    calibrator.showUnWarpedImage(primary_screen);
+
+#endif
    }
-
-
-//   ROS_INFO("Mesh start");
-//   pcl::PolygonMesh mesh = meshing.createMesh(calibrator.cloud_moved);
-//
-//   meshing.visualizeMesh(calibrator.cloud_moved, mesh);
-
-
-//   if (calibrator.imageProjectionSet()){
-//#ifdef SHOW_TEST_IMAGE
-//    calibrator.showUnWarpedImage(calibrator.test_img);
-//#else
-//    system("xwd -root | convert - /tmp/screenshot.jpg");
-//    cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
-//    cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
-//    calibrator.showUnWarpedImage(primary_screen);
-//
-//#endif
-//   }
   }
 
 

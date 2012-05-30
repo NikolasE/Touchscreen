@@ -31,9 +31,12 @@
 
 \section{Problem}
 \frame{
-%\frametitle{first title}
+\frametitle{Problem }
 %\begin{center}
-Undistort the projector's image
+\begin{itemize}
+\item image suffers from a projective distortion
+\item only the wall can be colored
+\end{itemize}
 
 \begin{figure}[t]
 \centering
@@ -58,11 +61,12 @@ Undistort the projector's image
 \frametitle{Approach}
 
 \begin{itemize}
-\item Projection of a known pattern (checkerboard) onto the wall
-\item Recognition of feature points in the Kinect-image and extraction of their 3d-pose
 \item Computation of homography between wall and projector's image plane
 \item Computation of the projector's projection matrix
+\item Projection of a known pattern (checkerboard) into the world
+\item Recognition of feature points in the Kinect-image and extraction of their 3d-pose
 \end{itemize}
+
 
 
 %\begin{figure}[t]

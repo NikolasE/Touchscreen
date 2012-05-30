@@ -10,7 +10,6 @@
 
 #include "type_definitions.h"
 #include "calibration.h"
-#include "user_input.h"
 
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
@@ -28,8 +27,6 @@ class Projector_Calibrator {
 
  cv::Size C_proj_size; // size of the projector image in pixels
 
- // The projection matrix of the projector and the homographies computed via OpenCV and SVD
- cv::Mat  hom_CV, hom_SVD;
 
 
  // trafo cloud s.t. checkerboard is z=0,  middle of board at x=y=0
@@ -60,12 +57,8 @@ class Projector_Calibrator {
  // remove all point from the input cloud where mask!=255
  void applyMaskOnInputCloud(Cloud& out);
 
-
-
  // fit a plane into the pointcloud
  float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f& model);
-
-
 
 
  // draw a checkerboard with given number of internal corners on the image and store the corners
@@ -81,15 +74,19 @@ class Projector_Calibrator {
  bool saveMat(const std::string name, const std::string filename, const cv::Mat& mat);
  bool loadMat(const std::string name, const std::string filename, cv::Mat& mat);
 
- void getCheckerboardArea(std::vector<cv::Point2i>& pts);
 
 
 public:
+ // The projection matrix of the projector and the homographies computed via OpenCV and SVD
+ cv::Mat  hom_CV, hom_SVD;
+
+
 
  // list of 3d-observations (in the wall-frame) of the checkerboard corners
  // length is a multiple of the number of checkerboardcorners
  Cloud observations_3d;
 
+ void getCheckerboardArea(std::vector<cv::Point2i>& pts);
 
 
  void publish3DPoints();
@@ -165,11 +162,7 @@ public:
  void createMaskFromDetections();
 
  void setInputImage(cv::Mat& image){input_image = image; corners.clear();}
- void setInputCloud(Cloud& cloud){
-  input_cloud = cloud;
-  if (kinect_trafo_valid)
-   pcl::getTransformedPointCloud(input_cloud,kinect_trafo,cloud_moved);
- }
+ void setInputCloud(Cloud& cloud);
 
 
 
@@ -190,10 +183,10 @@ public:
  void computeHomography_OPENCV();
  void computeHomography_SVD();
 
-void showFullscreenCheckerboard();
+ void showFullscreenCheckerboard();
 
 
-Cloud visualizePointCloud();
+ Cloud visualizePointCloud();
 
 
  Projector_Calibrator(){
