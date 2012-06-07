@@ -30,6 +30,8 @@ ros::Publisher pub_full_moved;
 ros::Publisher pub_3dPoints;
 ros::Publisher pub_colored;
 
+Mesh_visualizer* mesher;
+
 
 using namespace std;
 using namespace sensor_msgs;
@@ -103,6 +105,25 @@ void on_mouse_projector( int event, int x, int y, int flags, void* param ){
 }
 
 
+void imgCBHeightLines(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
+ Cloud cloud;
+ pcl::fromROSMsg(*cloud_ptr, cloud);
+
+ ROS_INFO("Mesh start");
+ pcl::PolygonMesh mesh = mesher->createMesh(cloud);
+
+ mesher->visualizeMesh(cloud, mesh);
+
+ std::vector<Line_collection> height_lines;
+
+ float height_step = 0.2; // given in meters
+
+ mesher->createHeightLines(mesh,cloud, height_lines, height_step);
+
+ mesher->visualizeHeightLines(height_lines);
+
+
+}
 
 void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr& cloud_ptr){
  // cout << "img cb" << endl;
@@ -139,10 +160,10 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
    cv::Point2f proj;
    if (calibrator.projMatrixSet())
-     applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
+    applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
 
    if (calibrator.homOpenCVSet())
-     applyHomography(cv::Point2f(p.x,p.y), calibrator.hom_CV, proj);
+    applyHomography(cv::Point2f(p.x,p.y), calibrator.hom_CV, proj);
 
    cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
    IplImage img_ipl = calibrator.projector_image;
@@ -342,12 +363,15 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
   calibrator.initFromFile();
 
-  Mesh_visualizer meshing;
+  mesher = new Mesh_visualizer();
+
   user_input.init();
   user_input.calibrator = &calibrator;
 
   ros::NodeHandle nh;
   cv::namedWindow("camera", 1);
+
+
 
 
   pub = nh.advertise<Cloud>("projected", 1);
@@ -365,7 +389,10 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
   message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
   message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
   Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
-  sync.registerCallback(boost::bind(&imgCB, _1, _2));
+  //  sync.registerCallback(boost::bind(&imgCB, _1, _2));
+
+  sync.registerCallback(boost::bind(&imgCBHeightLines, _1, _2));
+
 
   optimalRect.width = 0;
 
@@ -391,10 +418,7 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
    //   }
 
 
-   //   ROS_INFO("Mesh start");
-   //   pcl::PolygonMesh mesh = meshing.createMesh(calibrator.cloud_moved);
-   //
-   //   meshing.visualizeMesh(calibrator.cloud_moved, mesh);
+
 
 
    if (calibrator.imageProjectionSet()){

@@ -7,11 +7,15 @@
 
 #include "meshing.h"
 
+using namespace std;
+
 pcl::PolygonMesh Mesh_visualizer::createMesh(const Cloud& cloud){
 
 
  pcl::PolygonMesh mesh;
- if (cloud.size() == 0) return mesh;
+ if (cloud.size() == 0) {ROS_WARN("createMesh: Size 0"); return mesh;}
+
+ ROS_INFO("Cloud has %zu points", cloud.size());
 
  pcl::OrganizedFastMesh<pcl_Point> mesher;
 
@@ -20,14 +24,16 @@ pcl::PolygonMesh Mesh_visualizer::createMesh(const Cloud& cloud){
  mesher.setInputCloud(clone.makeShared());
 
 
-// std::vector<pcl::Vertices>& polygons
+ // std::vector<pcl::Vertices>& polygons
 
- ROS_INFO("reconstruct started");
- ROS_INFO("%i %i", cloud.height, cloud.width);
+ // ROS_INFO("reconstruct started");
+ // ROS_INFO("%i %i", cloud.height, cloud.width);
 
  assert(cloud.isOrganized());
  mesher.reconstruct(mesh);
  ROS_INFO("Mesh has %zu triangles",mesh.polygons.size());
+
+ return mesh;
 }
 
 
@@ -86,6 +92,63 @@ void Mesh_visualizer::visualizeMeshLines(const Cloud& cloud, const pcl::PolygonM
 }
 
 
+void Mesh_visualizer::visualizeHeightLines(const std::vector<Line_collection>& lc){
+
+ visualization_msgs::Marker marker;
+
+ marker.header.frame_id = "/openni_rgb_optical_frame";
+ marker.header.stamp = ros::Time::now();
+
+ marker.type = visualization_msgs::Marker::LINE_LIST;
+ marker.action = visualization_msgs::Marker::ADD;
+
+ marker.id = 0;
+
+ geometry_msgs::Point p;
+ std_msgs::ColorRGBA col;
+ col.a = 1.0;
+ col.r = 1.0;
+ col.g = 0.0;
+ col.b = 0.0;
+
+ marker.scale.x = 0.02;
+
+ marker.color = col;
+ marker.lifetime = ros::Duration();
+
+ //  ROS_INFO("Mesh has %zu triangles",mesh.polygons.size());
+ for (uint h=0; h<lc.size(); ++h){
+
+  // todo change color for different height
+  for (uint i=0; i<lc[h].size(); ++i){
+   geometry_msgs::Point p,q;
+
+
+   p.x = lc[h][i].first.x();
+   p.y = lc[h][i].first.y();
+   p.z = lc[h][i].first.z();
+
+   q.x = lc[h][i].second.x();
+   q.y = lc[h][i].second.y();
+   q.z = lc[h][i].second.z();
+   marker.points.push_back(p);
+   marker.points.push_back(q);
+
+
+   //   ROS_INFO("Adding point to visualizer: %f %f %f", p.x,p.y,p.z);
+   //   ROS_INFO("Adding point to visualizer: %f %f %f", q.x,q.y,q.z);
+
+
+   // push colors?
+  }
+ }
+
+ pub_height_lines_.publish(marker);
+
+}
+
+
+
 void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& mesh){
 
  // if (pub_.getNumSubscribers() == 0) {ROS_INFO("mesh: no one is listening"); return;}
@@ -116,12 +179,16 @@ void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& 
 
  marker.lifetime = ros::Duration();
 
- ROS_INFO("Mesh has %zu triangles",mesh.polygons.size());
+ // ROS_INFO("Mesh has %zu triangles",mesh.polygons.size());
  for (uint i=0; i<mesh.polygons.size(); ++i){
+  //  ROS_INFO("i: %i",i);
   pcl::Vertices vtc = mesh.polygons[i];
+
   assert(vtc.vertices.size() == 3);
 
   for (uint j=0; j<3; ++j){
+
+   //   ROS_INFO("size: %zu, idx: %i", cloud.size())
 
    pcl_Point cp = cloud.points[vtc.vertices[j]];
 
@@ -154,4 +221,127 @@ void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& 
 
 }
 
+
+
+// returns false if both points are on same side of height (depending on x-axis
+bool checkPair(const pcl_Point& a, const pcl_Point& b, float height, Eigen::Vector3f& interpolated){
+
+ float dist = sqrt(pow(a.x-b.x  ,2)+pow(a.y-b.y,2)+pow(a.z-b.z,2));
+ if (dist > 0.2) return false;
+
+ // ROS_INFO("dist: %f", dist);
+
+ if ((a.x <= height && b.x <= height) || (a.x >= height && b.x >= height)) return false;
+ if (a.x == height || b.x == height) return false;
+
+ // ROS_INFO("P1: %f %f %f, P2: %f %f %f, height: %f:", a.x,a.y,a.z, b.x,b.y,b.z, height);
+
+ pcl_Point sub = (a.x<b.x)?a:b;
+ pcl_Point top = (a.x<b.x)?b:a;
+
+ // ROS_INFO("sub: %f %f %f, top: %f %f %f, height: %f:", sub.x,sub.y,sub.z, top.x,top.y,top.z, height);
+ assert(sub.x < height && top.x > height);
+
+ float coeff = (height-sub.x)/(top.x-sub.x);
+ assert(coeff>=0);
+ interpolated.x() = height;
+ interpolated.y() = sub.y+coeff*(top.y-sub.y);
+ interpolated.z() = sub.z+coeff*(top.z-sub.z);
+ // ROS_INFO("P1: %f %f %f, P2: %f %f %f, height: %f:  IP:%f %f %f", a.x,a.y,a.z, b.x,b.y,b.z, height, interpolated.x(), interpolated.y(),interpolated.z());
+
+
+ // if (abs(interpolated.x()) < 1e-10){
+ //  assert(1==0);
+ // }
+
+ assert(interpolated.x() == interpolated.x());
+ assert( abs(interpolated.x()) < 10);
+
+ return true;
+
+}
+
+
+bool addLine(const pcl_Point& a, const pcl_Point& b, const pcl_Point& c, float height, PointPair& pp){
+
+
+ Eigen::Vector3f interpolated;
+ vector<Eigen::Vector3f> points;
+
+ if (checkPair(a,b,height,interpolated)) points.push_back(interpolated);
+ if (checkPair(a,c,height,interpolated)) points.push_back(interpolated);
+ if (checkPair(b,c,height,interpolated)) points.push_back(interpolated);
+
+ if (points.size() == 2){
+  pp.first = points[0]; pp.second = points[1];
+  return true;
+ }
+
+ return false;
+
+
+}
+
+
+
+void Mesh_visualizer::createHeightLines(const pcl::PolygonMesh& mesh,const Cloud& cloud, std::vector<Line_collection>& height_lines, float height_step){
+
+ // visualize x-direction
+// float x_min = 1e6;
+// float x_max = -1e6;
+
+ // find range of mesh in x-direction
+// for (uint i=0; i<mesh.polygons.size(); ++i){
+//  pcl::Vertices vtc = mesh.polygons[i]; assert(vtc.vertices.size() == 3);
+//  for (uint j=0; j<3; ++j){
+//   float x = cloud.points[vtc.vertices[j]].x;
+//   x_min = std::min(x,x_min); x_max = max(x,x_max);
+//  }
+// }
+
+
+ float x_min = 0;
+ float x_max = 1;
+
+ height_lines.clear();
+ Line_collection current_lines;
+ // loop over heights (else: start at given height)
+ for (float height = x_min; height <= x_max; height+=height_step){
+  current_lines.clear();
+  PointPair pp;
+
+  // loop over all triangles
+  for (uint i=0; i<mesh.polygons.size(); ++i){
+   pcl::Vertices vtc = mesh.polygons[i]; assert(vtc.vertices.size() == 3);
+
+
+   bool line_found = addLine(cloud.points[vtc.vertices[0]],cloud.points[vtc.vertices[1]],cloud.points[vtc.vertices[2]], height,pp);
+
+
+   if (line_found){
+    //    ROS_INFO("ndx: %i %i %i",vtc.vertices[0], vtc.vertices[1], vtc.vertices[2]);
+    //    ROS_INFO("pp: %f %f", pp.first.y(), pp.second.y());
+    current_lines.push_back(pp);
+   }
+
+  }
+
+  if (current_lines.size() > 0){
+   ROS_INFO("Found %zu Pointpairs for height %f", current_lines.size(), height);
+   height_lines.push_back(current_lines);
+  }
+
+ }
+
+
+
+
+ ROS_INFO("Found heightlines for %zu different heights", height_lines.size());
+
+
+
+
+
+
+}
 
