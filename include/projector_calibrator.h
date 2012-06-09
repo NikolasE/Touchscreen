@@ -37,9 +37,6 @@ class Projector_Calibrator {
  cv::Mat input_image; // rgb image of kinect
  cv::Mat gray; // gray version of kinect image
 
- // image on kinect image showing the area where the first checkerboard was found in white
- // its 8UC1, with board: 255, rest: 0
- cv::Mat mask;
 
 
 
@@ -54,8 +51,6 @@ class Projector_Calibrator {
  // pixel coordinates of the detected checkerboard corners
  std::vector<cv::Point2f> corners;
 
- // remove all point from the input cloud where mask!=255
- void applyMaskOnInputCloud(Cloud& out);
 
  // fit a plane into the pointcloud
  float fitPlaneToCloud(const Cloud& cloud, Eigen::Vector4f& model);
@@ -77,9 +72,18 @@ class Projector_Calibrator {
 
 
 public:
+
+ // image on kinect image showing the area where the first checkerboard was found in white
+ // its 8UC1, with board: 255, rest: 0
+ cv::Mat mask;
+
+
+
  // The projection matrix of the projector and the homographies computed via OpenCV and SVD
  cv::Mat  hom_CV, hom_SVD;
 
+ // remove all point from the input cloud where mask!=255
+ void applyMaskOnInputCloud(Cloud& out);
 
 
  // list of 3d-observations (in the wall-frame) of the checkerboard corners
@@ -204,10 +208,10 @@ public:
   proj_matrix_filename = "projection_matrix";
   kinect_trafo_filename = "kinect_trafo";
 
-  test_img = cv::imread("/usr/gast/engelhan/ros/Touchscreen/imgs/Testbild.png");
+  test_img = cv::imread("/work/home/engelhan/ros/Touchscreen/imgs/Testbild.png");
 
   if (!test_img.data){
-   ROS_ERROR("Could not open test image!");
+   ROS_ERROR("Could not open test image at /work/home/engelhan/ros/Touchscreen/imgs/Testbild.png!");
   }
 
   // creating fullscreen image (old syntax)

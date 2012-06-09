@@ -118,9 +118,9 @@ void imgCBHeightLines(const ImageConstPtr& img_ptr, const sensor_msgs::PointClou
 
  float height_step = 0.2; // given in meters
 
- mesher->createHeightLines(mesh,cloud, height_lines, height_step);
+ //mesher->createHeightLines(mesh,cloud, height_lines, height_step);
 
- mesher->visualizeHeightLines(height_lines);
+ //mesher->visualizeHeightLines(height_lines);
 
 
 }
@@ -133,6 +133,10 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
  calibrator.setInputCloud(cloud);
 
  cvSetMouseCallback("camera",on_mouse_projector,&calibrator.cloud_moved);
+
+
+
+
 
 
  cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(img_ptr , enc::BGR8);
@@ -149,30 +153,73 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
 
  // find user input and draw on Testimage
- if (calibrator.isKinectOrientationSet()){
+ // if (calibrator.isKinectOrientationSet()){
+ //
+ //  // find hand of user
+ //  user_input.setCloud(calibrator.cloud_moved);
+ //
+ //  // project finger into image
+ //  if (user_input.finger_found){
+ //   pcl_Point p = user_input.fingertip;
+ //
+ //   cv::Point2f proj;
+ //   if (calibrator.projMatrixSet())
+ //    applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
+ //
+ //   if (calibrator.homOpenCVSet())
+ //    applyHomography(cv::Point2f(p.x,p.y), calibrator.hom_CV, proj);
+ //
+ //   cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
+ //   IplImage img_ipl = calibrator.projector_image;
+ //   cvShowImage("fullscreen_ipl", &img_ipl);
+ //  }
+ //
+ // }
 
-  // find hand of user
-  user_input.setCloud(calibrator.cloud_moved);
 
-  // project finger into image
-  if (user_input.finger_found){
-   pcl_Point p = user_input.fingertip;
+ if (calibrator.isKinectTrafoSet()){
 
-   cv::Point2f proj;
-   if (calibrator.projMatrixSet())
-    applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),calibrator.proj_Matrix,proj);
+//  ROS_INFO("publish");
 
-   if (calibrator.homOpenCVSet())
-    applyHomography(cv::Point2f(p.x,p.y), calibrator.hom_CV, proj);
+  //   // project cloud into image:
+  //     projectCloudIntoProjector(calibrator.getTransformedCloud(),proj_Matrix, projector_image);
 
-   cv::circle(calibrator.projector_image, proj,20, CV_RGB(255,0,0),-1);
-   IplImage img_ipl = calibrator.projector_image;
-   cvShowImage("fullscreen_ipl", &img_ipl);
-  }
+  Cloud colored = calibrator.visualizePointCloud();
+
+//  Cloud::Ptr msg_col = colored.makeShared();
+//  msg_col->header.frame_id = "/openni_rgb_optical_frame";
+//  msg_col->header.stamp = ros::Time::now ();
+//  pub_colored.publish(msg_col);
+//
+//
+//  Cloud::Ptr msg = calibrator.getTransformedCloud()->makeShared();
+//  msg->header.frame_id = "/openni_rgb_optical_frame";
+//  msg->header.stamp = ros::Time::now ();
+//  pub_full_moved.publish(msg);
+
+
+  float min_z, max_z;
+  mesher->getZRangeWithinMaskArea(calibrator.cloud_moved, calibrator.mask,min_z, max_z);
+
+  ROS_INFO("In Mask: min_z: %f, max_z: %f",min_z, max_z);
+
+  pcl::PolygonMesh mesh = mesher->createMesh(calibrator.cloud_moved);
+
+  mesher->visualizeMesh(calibrator.cloud_moved, mesh);
+
+  std::vector<Line_collection> height_lines;
+
+  float height_step = 0.02; // given in meters
+
+  mesher->createHeightLines(mesh,calibrator.cloud_moved, height_lines, min_z, min(double(max_z),-0.02), height_step);
+  mesher->visualizeHeightLines(height_lines);
+  mesher->visualizeHeightLinesOnImage(height_lines, calibrator.projector_image, calibrator.proj_Matrix);
+cv::namedWindow("fooo");
+cv::imshow("fooo", calibrator.projector_image);
+  IplImage proj_ipl = calibrator.projector_image;
+  cvShowImage("fullscreen_ipl", &proj_ipl);
 
  }
-
-
 
 
  short c = cv::waitKey(100);
@@ -219,7 +266,6 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
   // store area of checkerboard in the user-interface
   calibrator.getCheckerboardArea(user_input.checkerboard_area);
 
-
   calibrator.setInputCloud(cloud);// apply trafo on input cloud
 
   prog_state = COLLECT_PATTERNS;
@@ -247,9 +293,6 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
   // Cloud transformed_cloud;
   if (prog_state == COLLECT_PATTERNS){
 
-
-
-
    calibrator.storeCurrent3DObservations();
 
    Cloud::Ptr msg = calibrator.observations_3d.makeShared();
@@ -267,26 +310,12 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
 
   if (prog_state == GET_PROJECTION){
-
-   // ROS_INFO("Get projection");
-
-
-
    calibrator.computeProjectionMatrix();
-
-
    prog_state = COLLECT_PATTERNS;
 
   }
 
-
-
-
-
-
-
   if (calibrator.projMatrixSet()){
-
 
    if (!calibrator.warpMatrixSet()){
 
@@ -333,6 +362,13 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
  void imu_CB(const sensor_msgs::ImuConstPtr& imu_ptr){
 
+  kinect_tilt_angle_deg = 0;
+  kinect_tilt_angle_valid = true;
+  calibrator.setKinectOrientation(kinect_tilt_angle_deg);
+
+  ROS_INFO("SETTING ANGLE");
+
+  /*
   if (!calibrator.isKinectOrientationSet()) {
 
 
@@ -350,6 +386,8 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
     calibrator.setKinectOrientation(kinect_tilt_angle_deg);
    }
   }
+
+   */
  }
 
 
@@ -389,9 +427,14 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
   message_filters::Subscriber<Image> image_sub(nh, "/camera/rgb/image_color", 2);
   message_filters::Subscriber<PointCloud2> cloud_sub(nh, "/camera/rgb/points", 2);
   Synchronizer<policy> sync(policy(2), image_sub, cloud_sub);
-  //  sync.registerCallback(boost::bind(&imgCB, _1, _2));
+  sync.registerCallback(boost::bind(&imgCB, _1, _2));
 
-  sync.registerCallback(boost::bind(&imgCBHeightLines, _1, _2));
+  //  sync.registerCallback(boost::bind(&imgCBHeightLines, _1, _2));
+
+
+  kinect_tilt_angle_deg = 0;
+  kinect_tilt_angle_valid = true;
+  calibrator.setKinectOrientation(kinect_tilt_angle_deg);
 
 
   optimalRect.width = 0;
@@ -419,19 +462,22 @@ void imgCB(const ImageConstPtr& img_ptr, const sensor_msgs::PointCloud2ConstPtr&
 
 
 
+   // show testimage or copy of first screen
+
+   //   if (calibrator.imageProjectionSet()){
+   //#ifdef SHOW_TEST_IMAGE
+   //    calibrator.showUnWarpedImage(calibrator.test_img);
+   //#else
+   //    system("xwd -root | convert - /tmp/screenshot.jpg");
+   //    cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
+   //    cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
+   //    calibrator.showUnWarpedImage(primary_screen);
+   //
+   //#endif
+   //   }
+   //
 
 
-   if (calibrator.imageProjectionSet()){
-#ifdef SHOW_TEST_IMAGE
-    calibrator.showUnWarpedImage(calibrator.test_img);
-#else
-    system("xwd -root | convert - /tmp/screenshot.jpg");
-    cv::Mat screen = cv::imread("/tmp/screenshot.jpg");
-    cv::Mat primary_screen = screen(cv::Range(0,mainScreenSize.height), cv::Range(0,mainScreenSize.width));
-    calibrator.showUnWarpedImage(primary_screen);
-
-#endif
-   }
   }
 
 

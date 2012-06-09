@@ -87,7 +87,7 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
   d += sqrt(pow(p.x-mu[0],2)+pow(p.y-mu[1],2)+pow(p.z-mu[2],2));
  }
  d /= c_cnt;
- 	// ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
+ // ROS_INFO("3d: mean: %f %f %f, dist: %f", mu[0], mu[1], mu[2], d);
 
  // mean distance should be sqrt(3)
  double s = sqrt(3)/d;
@@ -124,6 +124,12 @@ void scaleCloud(const Cloud& pts, cv::Mat& U, Cloud& transformed){
 
 
 }
+
+cv::Point2f applyPerspectiveTrafo(const Eigen::Vector3f& p,const cv::Mat& P){
+ cv::Point3f p3; p3.x = p.x(); p3.y = p.y(); p3.z = p.z();
+ return applyPerspectiveTrafo(p3,P);
+}
+
 
 void applyPerspectiveTrafo(const cv::Point3f& p,const cv::Mat& P, cv::Point2f& p_){
  cv::Mat P4 = cv::Mat(4,1,CV_64FC1);
@@ -171,36 +177,35 @@ void applyHomography(const cv::Point2f& p,const cv::Mat& H, cv::Point2f& p_){
 
 void printTrafo(const Eigen::Affine3f& M){
  for (uint i=0;i<4; ++i){
-   for (uint j=0;j<4; ++j)
-     cout << M(i,j) << " ";
-   cout << endl;
+  for (uint j=0;j<4; ++j)
+   cout << M(i,j) << " ";
+  cout << endl;
  }
 }
 
-
 bool saveAffineTrafo(const Eigen::Affine3f& M, const char* filename){
-  ofstream off(filename);
-  if (!off.is_open()){ ROS_WARN("Could not write to %s", filename); return false;}
-  for (uint i=0;i<4; ++i){
-    for (uint j=0;j<4; ++j)
-      off << M(i,j) << " ";
-    off << endl;
-  }
+ ofstream off(filename);
+ if (!off.is_open()){ ROS_WARN("Could not write to %s", filename); return false;}
+ for (uint i=0;i<4; ++i){
+  for (uint j=0;j<4; ++j)
+   off << M(i,j) << " ";
+  off << endl;
+ }
 
-  return true;
+ return true;
 }
 
 bool loadAffineTrafo(Eigen::Affine3f& M, const char* filename){
-  ifstream iff(filename);
+ ifstream iff(filename);
 
-  if (!iff.is_open()) {
-    cout << "could not open " << filename << endl;
-    return false;
-  }
+ if (!iff.is_open()) {
+  cout << "could not open " << filename << endl;
+  return false;
+ }
 
-  for (uint i=0;i<4; ++i)
-    for (uint j=0;j<4; ++j)
-       iff >> M(i,j);
+ for (uint i=0;i<4; ++i)
+  for (uint j=0;j<4; ++j)
+   iff >> M(i,j);
 
-  return true;
+ return true;
 }

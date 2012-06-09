@@ -17,7 +17,12 @@
 #include <pcl/surface/marching_cubes_greedy.h>
 #include <pcl/features/normal_3d.h>
 #include "type_definitions.h"
+#include "calibration.h"
 
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
 
 typedef std::pair<Eigen::Vector3f,Eigen::Vector3f> PointPair;
 typedef std::vector<PointPair>  Line_collection;
@@ -41,11 +46,14 @@ struct Mesh_visualizer {
  void visualizeHeightLines(const std::vector<Line_collection>& lc);
 
  // visualize x-direction
- void createHeightLines(const pcl::PolygonMesh& mesh, const Cloud& cloud, std::vector<Line_collection>& height_lines, float height_step);
+ void createHeightLines(const pcl::PolygonMesh& mesh, const Cloud& cloud, std::vector<Line_collection>& height_lines, float min_z, float max_z, float height_step);
 
  pcl::PolygonMesh createMesh(const Cloud& cloud);
 
+ void visualizeHeightLinesOnImage(const std::vector<Line_collection>& height_lines, cv::Mat& img, const cv::Mat& P);
 
+
+ void getZRangeWithinMaskArea(const Cloud& cloud, const cv::Mat& mask, float& min_z, float& max_z);
 
 
 };

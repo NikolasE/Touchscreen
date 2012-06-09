@@ -9,6 +9,38 @@
 
 using namespace std;
 
+void Mesh_visualizer::visualizeHeightLinesOnImage(const std::vector<Line_collection>& height_lines, cv::Mat& img, const cv::Mat& P){
+
+ for (uint h=0; h<height_lines.size(); ++h){
+
+  for (uint i=0; i<height_lines[h].size(); ++i){
+
+   cv::Point2f px = applyPerspectiveTrafo(height_lines[h][i].first, P);
+   cv::Point2f px2 = applyPerspectiveTrafo(height_lines[h][i].second, P);
+
+   cv::line(img, px, px2, CV_RGB(255,255,255),3);
+//   cv::line(img, px, px2, CV_RGB(0,0,0),2);
+  }
+ }
+}
+
+
+
+void Mesh_visualizer::getZRangeWithinMaskArea(const Cloud& cloud, const cv::Mat& mask, float& min_z, float& max_z){
+
+ min_z = 1e6;
+ max_z = -1e6;
+
+ for (uint x=0; x<cloud.width; ++x)
+  for (uint y=0; y<cloud.height; ++y){
+   if (mask.at<uchar>(y,x) == 0) continue;
+   float z = cloud.at(x,y).z;
+   min_z = min(min_z,z); max_z = max(max_z,z);
+ }
+}
+
+
+
 pcl::PolygonMesh Mesh_visualizer::createMesh(const Cloud& cloud){
 
 
@@ -223,28 +255,32 @@ void Mesh_visualizer::visualizeMesh(const Cloud& cloud, const pcl::PolygonMesh& 
 
 
 
-// returns false if both points are on same side of height (depending on x-axis
+// returns false if both points are on same side of height (depending on z-axis)
 bool checkPair(const pcl_Point& a, const pcl_Point& b, float height, Eigen::Vector3f& interpolated){
 
- float dist = sqrt(pow(a.x-b.x  ,2)+pow(a.y-b.y,2)+pow(a.z-b.z,2));
- if (dist > 0.2) return false;
+// float dist = sqrt(pow(a.x-b.x,2)+pow(a.y-b.y,2)+pow(a.z-b.z,2));
+// if (dist > 0.2) return false;
 
  // ROS_INFO("dist: %f", dist);
 
- if ((a.x <= height && b.x <= height) || (a.x >= height && b.x >= height)) return false;
- if (a.x == height || b.x == height) return false;
+// ROS_INFO("P1: %f %f %f, P2: %f %f %f, height: %f:", a.z,a.y,a.z, b.z,b.y,b.z, height);
 
- // ROS_INFO("P1: %f %f %f, P2: %f %f %f, height: %f:", a.x,a.y,a.z, b.x,b.y,b.z, height);
 
- pcl_Point sub = (a.x<b.x)?a:b;
- pcl_Point top = (a.x<b.x)?b:a;
+ if ((a.z <= height && b.z <= height) || (a.z >= height && b.z >= height)) return false;
+// if (a.z == height || b.z == height) return false;
 
- // ROS_INFO("sub: %f %f %f, top: %f %f %f, height: %f:", sub.x,sub.y,sub.z, top.x,top.y,top.z, height);
- assert(sub.x < height && top.x > height);
 
- float coeff = (height-sub.x)/(top.x-sub.x);
+ pcl_Point sub = (a.z<b.z)?a:b;
+ pcl_Point top = (a.z<b.z)?b:a;
+
+ // ROS_INFO("sub: %f %f %f, top: %f %f %f, height: %f:", sub.z,sub.y,sub.z, top.z,top.y,top.z, height);
+ assert(sub.z < height && top.z > height);
+
+ float coeff = (height-sub.z)/(top.z-sub.z);
+
+
  assert(coeff>=0);
- interpolated.x() = height;
+ interpolated.x() = sub.x+coeff*(top.x-sub.x);
  interpolated.y() = sub.y+coeff*(top.y-sub.y);
  interpolated.z() = sub.z+coeff*(top.z-sub.z);
  // ROS_INFO("P1: %f %f %f, P2: %f %f %f, height: %f:  IP:%f %f %f", a.x,a.y,a.z, b.x,b.y,b.z, height, interpolated.x(), interpolated.y(),interpolated.z());
@@ -284,29 +320,34 @@ bool addLine(const pcl_Point& a, const pcl_Point& b, const pcl_Point& c, float h
 
 
 
-void Mesh_visualizer::createHeightLines(const pcl::PolygonMesh& mesh,const Cloud& cloud, std::vector<Line_collection>& height_lines, float height_step){
+void Mesh_visualizer::createHeightLines(const pcl::PolygonMesh& mesh,const Cloud& cloud, std::vector<Line_collection>& height_lines, float min_z, float max_z, float height_step){
 
  // visualize x-direction
-// float x_min = 1e6;
-// float x_max = -1e6;
-
- // find range of mesh in x-direction
-// for (uint i=0; i<mesh.polygons.size(); ++i){
-//  pcl::Vertices vtc = mesh.polygons[i]; assert(vtc.vertices.size() == 3);
-//  for (uint j=0; j<3; ++j){
-//   float x = cloud.points[vtc.vertices[j]].x;
-//   x_min = std::min(x,x_min); x_max = max(x,x_max);
+//  float x_min = 1e6;
+//  float x_max = -1e6;
+//
+////  find range of mesh in x-direction
+//  for (uint i=0; i<mesh.polygons.size(); ++i){
+//   pcl::Vertices vtc = mesh.polygons[i]; assert(vtc.vertices.size() == 3);
+//   for (uint j=0; j<3; ++j){
+//    float x = cloud.points[vtc.vertices[j]].z;
+//    x_min = std::min(x,x_min); x_max = max(x,x_max);
+//   }
 //  }
-// }
 
+//  ROS_INFO("CLoud: min: %f, max: %f", x_min, x_max);
 
- float x_min = 0;
- float x_max = 1;
+// float z_min = -0.3;
+// float z_max = 0;
 
  height_lines.clear();
  Line_collection current_lines;
  // loop over heights (else: start at given height)
- for (float height = x_min; height <= x_max; height+=height_step){
+ for (float height = max_z; height >= min_z; height-=height_step){
+
+//  ROS_INFO("Checking %f", height);
+
+
   current_lines.clear();
   PointPair pp;
 
@@ -329,6 +370,8 @@ void Mesh_visualizer::createHeightLines(const pcl::PolygonMesh& mesh,const Cloud
   if (current_lines.size() > 0){
    ROS_INFO("Found %zu Pointpairs for height %f", current_lines.size(), height);
    height_lines.push_back(current_lines);
+  }else{
+   break;
   }
 
  }

@@ -598,8 +598,8 @@ Cloud Projector_Calibrator::visualizePointCloud(){
  }
 
  // min dist from wall
- float min_dist = 0.10;
- float max_dist = 2; // needed to scale color
+ float min_dist = 0.00;
+ float max_dist = 0.25; // needed to scale color
 
  // sort cloud in z-direction
 
@@ -622,6 +622,10 @@ Cloud Projector_Calibrator::visualizePointCloud(){
   // cout << z << endl;
 
 
+  // dont't show groundplane
+  if (z<0 || z>max_dist)
+    continue;
+
   cv::Point2f px;
   applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_Matrix,px);
 
@@ -630,36 +634,40 @@ Cloud Projector_Calibrator::visualizePointCloud(){
 
   if (x<0 || y<0 || x>=projector_image.cols || y >= projector_image.rows) continue;
 
-  cv::Vec3b col = projector_image.at<cv::Vec3b>(y,x);
+//  cv::Vec3b col = projector_image.at<cv::Vec3b>(y,x);
+//
+//  if (col.val[0]>0) continue;
 
-  if (col.val[0]>0) continue;
+//  p.b = p.r = p.g = 0;
 
-  p.b = p.r = p.g = 0;
 
-  if (z<min_dist)
-   p.r = 255;
-  else
-   if (z<0.5)
-    p.g = 255;
-   else
-    p.b = 255;
+//  if (z<min_dist)
+//   p.r = 255;
+//  else
+//   if (z<0.5)
+//    p.g = 255;
+//   else
+//    p.b = 255;
 
   // px.y -= 5;
+  //  cv::circle(projector_image, px, 10, CV_RGB(p.r,p.g,p.b),-1);
 
-  cv::circle(projector_image, px, 10, CV_RGB(p.r,p.g,p.b),-1);
 
-  //cv::circle(projector_image, px, 2, cv::Scalar(255,255,(z-min_dist)/(max_dist-min_dist)*255),2 );
+//  projector_image.at<cv::Vec3b>(px.y,px.x) = cv::Vec3b((int((z*3/max_dist)*180))%180,255,255);
 
-  coled.push_back(p);
+  cv::circle(projector_image, px, 3, cv::Scalar((int((z*3/max_dist)*180))%180,255,255) ,-1);
+
+
+  //coled.push_back(p);
 
 
  }
 
- //cv::cvtColor(projector_image,projector_image, CV_HSV2BGR);
+ cv::cvtColor(projector_image,projector_image, CV_HSV2BGR);
 
 
- IplImage proj_ipl = projector_image;
- cvShowImage("fullscreen_ipl", &proj_ipl);
+// IplImage proj_ipl = projector_image;
+// cvShowImage("fullscreen_ipl", &proj_ipl);
 
  return coled;
 
