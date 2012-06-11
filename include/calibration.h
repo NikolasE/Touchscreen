@@ -31,5 +31,6 @@ bool loadAffineTrafo(Eigen::Affine3f& M, const char* filename);
 
 void printTrafo(const Eigen::Affine3f& M);
 
+void update_min_filtered_cloud(Cloud& min_cloud, const Cloud& current);
 
 #endif /* CALIBRATION_H_ */

@@ -603,71 +603,76 @@ Cloud Projector_Calibrator::visualizePointCloud(){
 
  // sort cloud in z-direction
 
- std::vector<pcl_Point> sorted; sorted.reserve(cloud_moved.size());
- for (uint i=0; i<cloud_moved.size(); ++i) {
-  pcl_Point p = cloud_moved[i];
-  if (p.x!=p.x) continue;
-  sorted.push_back(p);
- }
+ // std::vector<pcl_Point> sorted; sorted.reserve(cloud_moved.size());
+ // for (uint i=0; i<cloud_moved.size(); ++i) {
+ //  pcl_Point p = cloud_moved[i];
+ //  if (p.x!=p.x) continue;
+ //  sorted.push_back(p);
+ // }
 
- std::sort(sorted.begin(), sorted.end(), z_comp);
-
-
- for (uint i=0; i<sorted.size() ; i++){
-  pcl_Point p = sorted[i];
+ // std::sort(sorted.begin(), sorted.end(), z_comp);
 
 
-  float z = -p.z;// z points into wall
+ for (uint x=0; x<cloud_moved.width; ++x)
+  for (uint y=0; y<cloud_moved.height; ++y){
+   if (mask.at<uchar>(y,x) == 0) continue;
 
-  // cout << z << endl;
+   pcl_Point p = cloud_moved.at(x,y);
 
 
-  // dont't show groundplane
-  if (z<0 || z>max_dist)
+   float z = -p.z;// z points into wall
+
+   // cout << z << endl;
+
+
+   // dont't show groundplane
+   if (z<0 || z>max_dist)
     continue;
 
-  cv::Point2f px;
-  applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_Matrix,px);
+   cv::Point2f px;
+   applyPerspectiveTrafo(cv::Point3f(p.x,p.y,p.z),proj_Matrix,px);
 
-  int x = px.x; int y = px.y;
-
-
-  if (x<0 || y<0 || x>=projector_image.cols || y >= projector_image.rows) continue;
-
-//  cv::Vec3b col = projector_image.at<cv::Vec3b>(y,x);
-//
-//  if (col.val[0]>0) continue;
-
-//  p.b = p.r = p.g = 0;
+   int x = px.x; int y = px.y;
 
 
-//  if (z<min_dist)
-//   p.r = 255;
-//  else
-//   if (z<0.5)
-//    p.g = 255;
-//   else
-//    p.b = 255;
+   if (x<0 || y<0 || x>=projector_image.cols || y >= projector_image.rows) continue;
 
-  // px.y -= 5;
-  //  cv::circle(projector_image, px, 10, CV_RGB(p.r,p.g,p.b),-1);
+   //  cv::Vec3b col = projector_image.at<cv::Vec3b>(y,x);
+   //
+   //  if (col.val[0]>0) continue;
+
+   //  p.b = p.r = p.g = 0;
 
 
-//  projector_image.at<cv::Vec3b>(px.y,px.x) = cv::Vec3b((int((z*3/max_dist)*180))%180,255,255);
+   //  if (z<min_dist)
+   //   p.r = 255;
+   //  else
+   //   if (z<0.5)
+   //    p.g = 255;
+   //   else
+   //    p.b = 255;
 
-  cv::circle(projector_image, px, 3, cv::Scalar((int((z*3/max_dist)*180))%180,255,255) ,-1);
+   // px.y -= 5;
+   //  cv::circle(projector_image, px, 10, CV_RGB(p.r,p.g,p.b),-1);
 
 
-  //coled.push_back(p);
+   //  projector_image.at<cv::Vec3b>(px.y,px.x) = cv::Vec3b((int((z*3/max_dist)*180))%180,255,255);
+
+   cv::circle(projector_image, px, 3, cv::Scalar((int(((z)/max_dist*1.5)*180))%180,255,255) ,-1);
+
+//   cv::circle(projector_image, px, 3, CV_RGB(255,0,0),-1);
 
 
- }
+   //coled.push_back(p);
+
+
+  }
 
  cv::cvtColor(projector_image,projector_image, CV_HSV2BGR);
 
 
-// IplImage proj_ipl = projector_image;
-// cvShowImage("fullscreen_ipl", &proj_ipl);
+ // IplImage proj_ipl = projector_image;
+ // cvShowImage("fullscreen_ipl", &proj_ipl);
 
  return coled;
 
@@ -784,7 +789,7 @@ void Projector_Calibrator::getCheckerboardArea(vector<cv::Point2i>& pts){
 
 
 bool Projector_Calibrator::findOptimalProjectionArea(float ratio, cv_RectF& rect){
-// #define SHOW_SEARCH_IMAGE
+ // #define SHOW_SEARCH_IMAGE
 
 
  if(!kinect_trafo_valid){
@@ -951,7 +956,7 @@ void Projector_Calibrator::setInputCloud(Cloud& cloud){
 
 
 void Projector_Calibrator::createMaskFromDetections(){
-// #define SHOW_MASK_IMAGE
+ // #define SHOW_MASK_IMAGE
 
  if (corners.size() != uint(C_checkboard_size.width*C_checkboard_size.height)){
   ROS_INFO("can't create mask if the corners were not detected!"); return; }

@@ -13,6 +13,30 @@
 using namespace std;
 
 
+void update_min_filtered_cloud(Cloud& min_cloud, const Cloud& current){
+ for (uint x = 0; x<min_cloud.width; x++)
+  for (uint y = 0; y<min_cloud.height; y++){
+   pcl_Point old_point = min_cloud.at(x,y);
+   pcl_Point new_point = current.at(x,y);
+
+   // if point was nan, update always
+   if (!(old_point.x == old_point.x)){
+    min_cloud.at(x,y) = new_point;
+    continue;
+   }
+
+   // update point if new point is valid
+   if (!(new_point.x == new_point.x)) continue;
+
+   // z-axis points into sand...
+   if (new_point.z > old_point.z)
+    min_cloud.at(x,y) = new_point;
+  }
+
+}
+
+
+
 void scalePixels(const vector<cv::Point2f>& pxs, cv::Mat& T, vector<cv::Point2f>& transformed){
 
  uint c_cnt = pxs.size();
